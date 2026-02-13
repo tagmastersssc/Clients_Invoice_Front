@@ -8,7 +8,9 @@ import {
   resetPassword,
 } from "./api/auth";
 import logo from "/bilailogocompleto.png";
-import logonegativo from "/bilailogocompletonegativo.png";
+import logoicon from "/bilailogo.svg";
+
+const LOGIN_APP_URL = import.meta.env.VITE_LOGIN_APP_URL || "http://localhost:5173";
 
 const VIEWS = {
   LOGIN: "login",
@@ -19,6 +21,8 @@ const VIEWS = {
   REGISTER_SALE_MENU: "register-sale",
   ELECTRONIC_INVOICE: "electronic-invoice",
   GENERIC_INVOICE: "generic-invoice",
+  SALES: "sales",
+  INVENTORY: "inventory",
   DASHBOARDS: "dashboards",
   CLIENTS: "clients",
   TRANSACTIONS: "transactions",
@@ -28,6 +32,8 @@ const VIEWS = {
 
 const NAV_ITEMS = [
   { label: "Inicio", icon: "home", view: VIEWS.HOME },
+  { label: "Ventas", icon: "insights", view: VIEWS.SALES },
+  { label: "Inventario", icon: "inventory_2", view: VIEWS.INVENTORY },
   { label: "Dashboards", icon: "query_stats", view: VIEWS.DASHBOARDS },
   { label: "Clientes", icon: "group", view: VIEWS.CLIENTS },
   { label: "Transacciones", icon: "receipt_long", view: VIEWS.TRANSACTIONS },
@@ -71,6 +77,14 @@ const VIEW_META = {
   [VIEWS.GENERIC_INVOICE]: {
     title: "Factura genérica",
     description: "Registra ventas rápidas con los datos esenciales.",
+  },
+  [VIEWS.SALES]: {
+    title: "Ventas",
+    description: "Consulta el rendimiento comercial y detecta oportunidades de crecimiento.",
+  },
+  [VIEWS.INVENTORY]: {
+    title: "Inventario",
+    description: "Visualiza existencias, rotación y alertas en un solo lugar.",
   },
 };
 
@@ -148,6 +162,165 @@ const getInitial = (name, fallback) => {
   }
   return "U";
 };
+
+const generateRowId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+
+const createProductRow = () => ({
+  id: generateRowId(),
+  product: "",
+  quantity: "",
+  price: "",
+  taxType: "",
+});
+
+const validateProductRows = (products, { requireTaxType = false } = {}) => {
+  const rowErrors = products.map(() => ({}));
+  let hasErrors = false;
+
+  products.forEach((item, index) => {
+    const currentErrors = rowErrors[index];
+    const productName = (item.product ?? "").trim();
+    if (!productName) {
+      currentErrors.product = "Describe el producto.";
+      hasErrors = true;
+    }
+
+    const quantityRaw = item.quantity ?? "";
+    const quantityValue = Number(quantityRaw);
+    if (!quantityRaw) {
+      currentErrors.quantity = "Indica la cantidad.";
+      hasErrors = true;
+    } else if (Number.isNaN(quantityValue) || quantityValue <= 0) {
+      currentErrors.quantity = "La cantidad debe ser mayor a cero.";
+      hasErrors = true;
+    }
+
+    const priceRaw = item.price ?? "";
+    const priceValue = Number(priceRaw);
+    if (!priceRaw) {
+      currentErrors.price = "Indica el precio.";
+      hasErrors = true;
+    } else if (Number.isNaN(priceValue) || priceValue <= 0) {
+      currentErrors.price = "El precio debe ser mayor a cero.";
+      hasErrors = true;
+    }
+
+    if (requireTaxType && !item.taxType) {
+      currentErrors.taxType = "Selecciona el tipo de impuesto.";
+      hasErrors = true;
+    }
+  });
+
+  return { errors: rowErrors, hasErrors };
+};
+
+const InvoiceProductsTable = ({
+  products,
+  errors = [],
+  includeTaxType,
+  onProductChange,
+  onAddProduct,
+  onRemoveProduct,
+}) => (
+  <div className="invoice-table-wrapper">
+    <table className="invoice-table">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Cantidad</th>
+          <th>Precio</th>
+          {includeTaxType && <th>Impuesto</th>}
+          <th className="table-actions-header">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {products.map((item, index) => {
+          const rowErrors = errors[index] || {};
+          return (
+            <tr key={item.id}>
+              <td>
+                <div className={`table-input-wrapper${rowErrors.product ? " has-error" : ""}`}>
+                  <input
+                    type="text"
+                    className="table-input"
+                    placeholder="Descripción del producto"
+                    value={item.product}
+                    onChange={(event) => onProductChange(index, "product", event.target.value)}
+                    autoComplete="off"
+                  />
+                  {rowErrors.product && <p className="input-error">{rowErrors.product}</p>}
+                </div>
+              </td>
+              <td>
+                <div className={`table-input-wrapper${rowErrors.quantity ? " has-error" : ""}`}>
+                  <input
+                    type="number"
+                    className="table-input"
+                    placeholder="0"
+                    value={item.quantity}
+                    onChange={(event) => onProductChange(index, "quantity", event.target.value)}
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                  />
+                  {rowErrors.quantity && <p className="input-error">{rowErrors.quantity}</p>}
+                </div>
+              </td>
+              <td>
+                <div className={`table-input-wrapper${rowErrors.price ? " has-error" : ""}`}>
+                  <input
+                    type="number"
+                    className="table-input"
+                    placeholder="0.00"
+                    value={item.price}
+                    onChange={(event) => onProductChange(index, "price", event.target.value)}
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                  />
+                  {rowErrors.price && <p className="input-error">{rowErrors.price}</p>}
+                </div>
+              </td>
+              {includeTaxType && (
+                <td>
+                  <div
+                    className={`table-input-wrapper select${rowErrors.taxType ? " has-error" : ""}`}
+                  >
+                    <select
+                      value={item.taxType}
+                      onChange={(event) => onProductChange(index, "taxType", event.target.value)}
+                    >
+                      <option value="">Tipo de impuesto</option>
+                      <option value="iva19">IVA 19%</option>
+                      <option value="iva5">IVA 5%</option>
+                      <option value="exento">Exento</option>
+                    </select>
+                    {rowErrors.taxType && <p className="input-error">{rowErrors.taxType}</p>}
+                  </div>
+                </td>
+              )}
+              <td className="table-actions">
+                <button
+                  type="button"
+                  className="table-remove-button"
+                  onClick={() => onRemoveProduct(index)}
+                  disabled={products.length === 1}
+                  aria-label={`Eliminar producto ${index + 1}`}
+                >
+                  <span className="material-symbols-rounded">delete</span>
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+    <button type="button" className="table-add-button" onClick={onAddProduct}>
+      <span className="material-symbols-rounded">add</span>
+      Agregar producto
+    </button>
+  </div>
+);
 
 const OneTimeCodeInput = ({ value, onChange, error }) => {
   const safeValue = (value ?? "").replace(/\D/g, "").slice(0, CODE_LENGTH);
@@ -724,6 +897,206 @@ const HomeView = ({ onRegisterSale, onViewSales, onInventory, feedback }) => (
   </section>
 );
 
+const SalesView = () => {
+  const sales = [
+    {
+      id: "FE-3482",
+      client: "Innovar S.A.",
+      channel: "Factura electrónica",
+      total: "$4,850",
+      status: "Pagada",
+      statusClass: "status-pill--success",
+    },
+    {
+      id: "FG-1294",
+      client: "Retail Nova",
+      channel: "Factura genérica",
+      total: "$1,920",
+      status: "Pendiente",
+      statusClass: "status-pill--warning",
+    },
+    {
+      id: "FE-3478",
+      client: "Bazar 24",
+      channel: "Factura electrónica",
+      total: "$3,410",
+      status: "Pagada",
+      statusClass: "status-pill--success",
+    },
+    {
+      id: "FG-1289",
+      client: "LogiMax",
+      channel: "Factura genérica",
+      total: "$760",
+      status: "Revisar",
+      statusClass: "status-pill--info",
+    },
+  ];
+
+  return (
+    <section className="sales-view" aria-labelledby="sales-heading">
+      <div className="view-header">
+        <div>
+          <p className="section-kicker">Rendimiento comercial</p>
+          <h2 id="sales-heading">Ventas con contexto de negocio</h2>
+          <p>Analiza resultados diarios, ticket promedio y estado de tus ventas recientes.</p>
+        </div>
+        <div className="view-header-actions">
+          <button type="button" className="ghost-button">
+            <span className="material-symbols-rounded">calendar_today</span>
+            Últimos 30 días
+          </button>
+          <button type="button" className="primary-button">
+            <span className="material-symbols-rounded">file_download</span>
+            Exportar
+          </button>
+        </div>
+      </div>
+
+      <div className="performance-grid">
+        <article className="performance-card">
+          <p>Ventas del día</p>
+          <h3>$18,250</h3>
+          <span className="status-pill status-pill--success">+12% vs ayer</span>
+        </article>
+        <article className="performance-card">
+          <p>Ticket promedio</p>
+          <h3>$312</h3>
+          <span className="status-pill status-pill--info">+4.6% semanal</span>
+        </article>
+        <article className="performance-card">
+          <p>Ventas facturadas</p>
+          <h3>94</h3>
+          <span className="status-pill status-pill--warning">8 en seguimiento</span>
+        </article>
+      </div>
+
+      <div className="panel-table">
+        <div className="panel-table-head">
+          <span>Factura</span>
+          <span>Cliente</span>
+          <span>Canal</span>
+          <span>Total</span>
+          <span>Estado</span>
+        </div>
+        {sales.map((sale) => (
+          <div className="panel-table-row" key={sale.id}>
+            <span className="panel-strong">{sale.id}</span>
+            <span>{sale.client}</span>
+            <span>{sale.channel}</span>
+            <span className="panel-strong">{sale.total}</span>
+            <span className={`status-pill ${sale.statusClass}`}>{sale.status}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+const InventoryView = () => {
+  const products = [
+    {
+      name: "Cámara Web Pro",
+      sku: "CW-4902",
+      stock: "26",
+      rotation: "Alta",
+      status: "Óptimo",
+      statusClass: "status-pill--success",
+    },
+    {
+      name: "Teclado Mecánico K2",
+      sku: "TK-1120",
+      stock: "8",
+      rotation: "Media",
+      status: "Bajo stock",
+      statusClass: "status-pill--warning",
+    },
+    {
+      name: "Mouse Inalámbrico MX",
+      sku: "MS-7744",
+      stock: "42",
+      rotation: "Alta",
+      status: "Óptimo",
+      statusClass: "status-pill--success",
+    },
+    {
+      name: "Hub USB-C 7 en 1",
+      sku: "HB-3198",
+      stock: "5",
+      rotation: "Alta",
+      status: "Crítico",
+      statusClass: "status-pill--danger",
+    },
+  ];
+
+  return (
+    <section className="inventory-view" aria-labelledby="inventory-heading">
+      <div className="view-header">
+        <div>
+          <p className="section-kicker">Control de existencias</p>
+          <h2 id="inventory-heading">Inventario con alertas accionables</h2>
+          <p>Visualiza disponibilidad, rotación y productos que requieren reposición.</p>
+        </div>
+        <div className="view-header-actions">
+          <button type="button" className="ghost-button">
+            <span className="material-symbols-rounded">qr_code_scanner</span>
+            Escanear SKU
+          </button>
+          <button type="button" className="primary-button">
+            <span className="material-symbols-rounded">add</span>
+            Nuevo producto
+          </button>
+        </div>
+      </div>
+
+      <div className="performance-grid">
+        <article className="performance-card">
+          <p>Productos activos</p>
+          <h3>428</h3>
+          <span className="status-pill status-pill--success">95% disponibles</span>
+        </article>
+        <article className="performance-card">
+          <p>Valor inventario</p>
+          <h3>$94,320</h3>
+          <span className="status-pill status-pill--info">Actualizado hoy</span>
+        </article>
+        <article className="performance-card">
+          <p>Alertas de stock</p>
+          <h3>13</h3>
+          <span className="status-pill status-pill--warning">5 críticas</span>
+        </article>
+      </div>
+
+      <div className="panel-table">
+        <div className="panel-table-head panel-table-head--inventory">
+          <span>Producto</span>
+          <span>SKU</span>
+          <span>Stock</span>
+          <span>Rotación</span>
+          <span>Estado</span>
+        </div>
+        {products.map((item) => (
+          <div className="panel-table-row panel-table-row--inventory" key={item.sku}>
+            <div className="panel-product">
+              <span className="panel-product-avatar" aria-hidden="true">
+                {item.name.charAt(0)}
+              </span>
+              <div>
+                <strong>{item.name}</strong>
+                <p>Última entrada: hace 2 días</p>
+              </div>
+            </div>
+            <span>{item.sku}</span>
+            <span className="panel-strong">{item.stock}</span>
+            <span>{item.rotation}</span>
+            <span className={`status-pill ${item.statusClass}`}>{item.status}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
 const DashboardsView = () => (
   <section className="dashboards-view" aria-labelledby="dashboards-heading">
     <div className="view-header">
@@ -983,18 +1356,40 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
     customerName: "",
     taxId: "",
     customerEmail: "",
-    product: "",
-    quantity: "",
-    price: "",
-    taxType: "",
   });
   const [errors, setErrors] = useState({});
+  const [products, setProducts] = useState([createProductRow()]);
+  const [productErrors, setProductErrors] = useState([{}]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setErrors((prev) => ({ ...prev, [name]: "" }));
+  };
+
+  const handleProductChange = (index, field, value) => {
+    setProducts((prev) =>
+      prev.map((item, rowIndex) => (rowIndex === index ? { ...item, [field]: value } : item))
+    );
+    setProductErrors((prev) =>
+      prev.map((rowError, rowIndex) =>
+        rowIndex === index ? { ...rowError, [field]: "" } : rowError
+      )
+    );
+  };
+
+  const addProductRow = () => {
+    setProducts((prev) => [...prev, createProductRow()]);
+    setProductErrors((prev) => [...prev, {}]);
+  };
+
+  const removeProductRow = (index) => {
+    if (products.length === 1) {
+      return;
+    }
+    setProducts((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
+    setProductErrors((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
   };
 
   const handleSubmit = (event) => {
@@ -1012,30 +1407,18 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.customerEmail)) {
       newErrors.customerEmail = "Ingresa un correo válido.";
     }
-    if (!formData.product.trim()) {
-      newErrors.product = "Describe el producto.";
-    }
-
-    const quantityValue = Number(formData.quantity);
-    if (!formData.quantity) {
-      newErrors.quantity = "Indica la cantidad.";
-    } else if (Number.isNaN(quantityValue) || quantityValue <= 0) {
-      newErrors.quantity = "La cantidad debe ser mayor a cero.";
-    }
-
-    const priceValue = Number(formData.price);
-    if (!formData.price) {
-      newErrors.price = "Indica el precio unitario.";
-    } else if (Number.isNaN(priceValue) || priceValue <= 0) {
-      newErrors.price = "El precio debe ser mayor a cero.";
-    }
-
-    if (!formData.taxType) {
-      newErrors.taxType = "Selecciona el tipo de impuesto.";
-    }
+    const { errors: rowErrors, hasErrors } = validateProductRows(products, {
+      requireTaxType: true,
+    });
+    setProductErrors(rowErrors);
 
     if (Object.keys(newErrors).length) {
       setErrors(newErrors);
+    } else {
+      setErrors({});
+    }
+
+    if (Object.keys(newErrors).length || hasErrors) {
       return;
     }
 
@@ -1062,91 +1445,54 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
         </p>
       </header>
       <form className="invoice-form" onSubmit={handleSubmit} noValidate>
-        <div className="invoice-grid">
-          <InputField
-            type="text"
-            placeholder="Nombre del cliente"
-            icon="person"
-            value={formData.customerName}
-            onChange={handleChange}
-            name="customerName"
-            error={errors.customerName}
-            autoComplete="name"
-          />
-          <InputField
-            type="text"
-            placeholder="Cédula o NIT"
-            icon="badge"
-            value={formData.taxId}
-            onChange={handleChange}
-            name="taxId"
-            error={errors.taxId}
-            autoComplete="off"
-          />
-          <InputField
-            type="email"
-            placeholder="Correo del cliente"
-            icon="mail"
-            value={formData.customerEmail}
-            onChange={handleChange}
-            name="customerEmail"
-            error={errors.customerEmail}
-            autoComplete="email"
-          />
-          <InputField
-            type="text"
-            placeholder="Producto"
-            icon="shopping_bag"
-            value={formData.product}
-            onChange={handleChange}
-            name="product"
-            error={errors.product}
-            autoComplete="off"
-          />
-          <InputField
-            type="number"
-            placeholder="Cantidad"
-            icon="format_list_numbered"
-            value={formData.quantity}
-            onChange={handleChange}
-            name="quantity"
-            error={errors.quantity}
-            min="0"
-            step="1"
-            inputMode="numeric"
-          />
-          <InputField
-            type="number"
-            placeholder="Precio"
-            icon="attach_money"
-            value={formData.price}
-            onChange={handleChange}
-            name="price"
-            error={errors.price}
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-          />
-          <div className={`input-wrapper select${errors.taxType ? " has-error" : ""}`}>
-            <select
-              className="input-field"
-              value={formData.taxType}
+        <div className="invoice-section">
+          <h3 className="invoice-section-title">Datos del cliente</h3>
+          <div className="invoice-grid">
+            <InputField
+              type="text"
+              placeholder="Nombre del cliente"
+              icon="person"
+              value={formData.customerName}
               onChange={handleChange}
-              name="taxType"
-              aria-invalid={Boolean(errors.taxType)}
-            >
-              <option value="">Tipo de impuesto</option>
-              <option value="iva19">IVA 19%</option>
-              <option value="iva5">IVA 5%</option>
-              <option value="exento">Exento</option>
-            </select>
-            <i className="material-symbols-rounded">percent</i>
-            {errors.taxType && (
-              <p className="input-error" id="taxType-error">
-                {errors.taxType}
-              </p>
-            )}
+              name="customerName"
+              error={errors.customerName}
+              autoComplete="name"
+            />
+            <InputField
+              type="text"
+              placeholder="Cédula o NIT"
+              icon="badge"
+              value={formData.taxId}
+              onChange={handleChange}
+              name="taxId"
+              error={errors.taxId}
+              autoComplete="off"
+            />
+            <InputField
+              type="email"
+              placeholder="Correo del cliente"
+              icon="mail"
+              value={formData.customerEmail}
+              onChange={handleChange}
+              name="customerEmail"
+              error={errors.customerEmail}
+              autoComplete="email"
+            />
           </div>
+        </div>
+        <div className="invoice-section">
+          <h3 className="invoice-section-title">Productos</h3>
+          <p className="invoice-section-subtitle">
+            Agrega cada producto incluido en la factura y define su impuesto correspondiente.
+          </p>
+          <InvoiceProductsTable
+            products={products}
+            errors={productErrors}
+            includeTaxType
+            onProductChange={handleProductChange}
+            onAddProduct={addProductRow}
+            onRemoveProduct={removeProductRow}
+          />
         </div>
         <div className="form-actions">
           <button type="button" className="button-secondary" onClick={onBack}>
@@ -1162,44 +1508,39 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
 };
 
 const GenericInvoiceForm = ({ onBack, onSubmit }) => {
-  const [formData, setFormData] = useState({
-    product: "",
-    quantity: "",
-    price: "",
-  });
-  const [errors, setErrors] = useState({});
+  const [products, setProducts] = useState([createProductRow()]);
+  const [productErrors, setProductErrors] = useState([{}]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: "" }));
+  const handleProductChange = (index, field, value) => {
+    setProducts((prev) =>
+      prev.map((item, rowIndex) => (rowIndex === index ? { ...item, [field]: value } : item))
+    );
+    setProductErrors((prev) =>
+      prev.map((rowError, rowIndex) =>
+        rowIndex === index ? { ...rowError, [field]: "" } : rowError
+      )
+    );
+  };
+
+  const addProductRow = () => {
+    setProducts((prev) => [...prev, createProductRow()]);
+    setProductErrors((prev) => [...prev, {}]);
+  };
+
+  const removeProductRow = (index) => {
+    if (products.length === 1) {
+      return;
+    }
+    setProducts((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
+    setProductErrors((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    const newErrors = {};
-
-    if (!formData.product.trim()) {
-      newErrors.product = "Describe el producto.";
-    }
-
-    const quantityValue = Number(formData.quantity);
-    if (!formData.quantity) {
-      newErrors.quantity = "Indica la cantidad.";
-    } else if (Number.isNaN(quantityValue) || quantityValue <= 0) {
-      newErrors.quantity = "La cantidad debe ser mayor a cero.";
-    }
-
-    const priceValue = Number(formData.price);
-    if (!formData.price) {
-      newErrors.price = "Indica el precio.";
-    } else if (Number.isNaN(priceValue) || priceValue <= 0) {
-      newErrors.price = "El precio debe ser mayor a cero.";
-    }
-
-    if (Object.keys(newErrors).length) {
-      setErrors(newErrors);
+    const { errors: rowErrors, hasErrors } = validateProductRows(products);
+    setProductErrors(rowErrors);
+    if (hasErrors) {
       return;
     }
 
@@ -1226,40 +1567,18 @@ const GenericInvoiceForm = ({ onBack, onSubmit }) => {
         </p>
       </header>
       <form className="invoice-form" onSubmit={handleSubmit} noValidate>
-        <div className="invoice-grid">
-          <InputField
-            type="text"
-            placeholder="Producto"
-            icon="shopping_bag"
-            value={formData.product}
-            onChange={handleChange}
-            name="product"
-            error={errors.product}
-            autoComplete="off"
-          />
-          <InputField
-            type="number"
-            placeholder="Cantidad"
-            icon="format_list_numbered"
-            value={formData.quantity}
-            onChange={handleChange}
-            name="quantity"
-            error={errors.quantity}
-            min="0"
-            step="1"
-            inputMode="numeric"
-          />
-          <InputField
-            type="number"
-            placeholder="Precio"
-            icon="attach_money"
-            value={formData.price}
-            onChange={handleChange}
-            name="price"
-            error={errors.price}
-            min="0"
-            step="0.01"
-            inputMode="decimal"
+        <div className="invoice-section">
+          <h3 className="invoice-section-title">Productos</h3>
+          <p className="invoice-section-subtitle">
+            Añade cada artículo de la venta con su cantidad y precio correspondiente.
+          </p>
+          <InvoiceProductsTable
+            products={products}
+            errors={productErrors}
+            includeTaxType={false}
+            onProductChange={handleProductChange}
+            onAddProduct={addProductRow}
+            onRemoveProduct={removeProductRow}
           />
         </div>
         <div className="form-actions">
@@ -1288,16 +1607,74 @@ const workflowViews = new Set([
   VIEWS.GENERIC_INVOICE,
 ]);
 
+const getSessionFromUrl = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const token = searchParams.get("token");
+  if (!token) {
+    return null;
+  }
+
+  const email = searchParams.get("email") || "";
+  const firstName = searchParams.get("firstName") || "";
+  const lastName = searchParams.get("lastName") || "";
+  const name = formatUserName(firstName, lastName, email);
+
+  localStorage.setItem("token", token);
+  localStorage.setItem("user_email", email);
+  localStorage.setItem("user_first_name", firstName);
+  localStorage.setItem("user_last_name", lastName);
+  localStorage.setItem("user_name", name);
+
+  searchParams.delete("token");
+  searchParams.delete("email");
+  searchParams.delete("firstName");
+  searchParams.delete("lastName");
+  const cleanQuery = searchParams.toString();
+  const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+
+  return { email, firstName, lastName, name };
+};
+
 const App = () => {
-  const [view, setView] = useState(VIEWS.LOGIN);
+  const [view, setView] = useState(VIEWS.HOME);
   const [loginMessage, setLoginMessage] = useState("");
   const [dashboardFeedback, setDashboardFeedback] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Cargando...");
   const [currentUser, setCurrentUser] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [passwordResetContext, setPasswordResetContext] = useState({
     email: "",
   });
+
+  useEffect(() => {
+    const sessionFromUrl = getSessionFromUrl();
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.replace(LOGIN_APP_URL);
+      return;
+    }
+
+    if (sessionFromUrl) {
+      setCurrentUser(sessionFromUrl);
+      setSessionReady(true);
+      return;
+    }
+
+    const email = localStorage.getItem("user_email") || "";
+    const firstName = localStorage.getItem("user_first_name") || "";
+    const lastName = localStorage.getItem("user_last_name") || "";
+    const storedName = localStorage.getItem("user_name");
+    const name = storedName || formatUserName(firstName, lastName, email);
+    setCurrentUser({ email, firstName, lastName, name });
+    setSessionReady(true);
+  }, []);
 
   const goToLogin = (message = "") => {
     setView(VIEWS.LOGIN);
@@ -1370,13 +1747,11 @@ const App = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    transitionTo(VIEWS.LOGIN, {
-      message: "Cerrando sesión...",
-      afterTransition: () => {
-        setLoginMessage("Sesión cerrada correctamente.");
-        setCurrentUser(null);
-      },
-    });
+    localStorage.removeItem("user_email");
+    localStorage.removeItem("user_first_name");
+    localStorage.removeItem("user_last_name");
+    localStorage.removeItem("user_name");
+    window.location.replace(LOGIN_APP_URL);
   };
 
   const handleRegisterSale = () => {
@@ -1387,11 +1762,13 @@ const App = () => {
   };
 
   const handleViewSales = () => {
-    setDashboardFeedback("La sección de reportes estará disponible muy pronto.");
+    setDashboardFeedback("");
+    transitionTo(VIEWS.SALES, { message: "Analizando tus resultados más recientes..." });
   };
 
   const handleInventory = () => {
-    setDashboardFeedback("Estamos preparando un módulo de inventario increíble para ti.");
+    setDashboardFeedback("");
+    transitionTo(VIEWS.INVENTORY, { message: "Sincronizando niveles de inventario..." });
   };
 
   const goBackToHome = () => {
@@ -1437,6 +1814,8 @@ const App = () => {
 
     const messages = {
       [VIEWS.HOME]: "Cargando tu panel principal...",
+      [VIEWS.SALES]: "Resumiendo tu histórico de ventas...",
+      [VIEWS.INVENTORY]: "Mapeando tu inventario en segundos...",
       [VIEWS.DASHBOARDS]: "Actualizando métricas en tiempo real...",
       [VIEWS.CLIENTS]: "Cargando clientes destacados...",
       [VIEWS.TRANSACTIONS]: "Obteniendo movimientos recientes...",
@@ -1470,6 +1849,10 @@ const App = () => {
             feedback={dashboardFeedback}
           />
         );
+      case VIEWS.SALES:
+        return <SalesView />;
+      case VIEWS.INVENTORY:
+        return <InventoryView />;
       case VIEWS.DASHBOARDS:
         return <DashboardsView />;
       case VIEWS.CLIENTS:
@@ -1574,6 +1957,10 @@ const App = () => {
 
   const userInitial = getInitial(currentUser?.name, currentUser?.email);
 
+  if (!sessionReady) {
+    return <LoaderOverlay message="Validando sesión..." />;
+  }
+
   return (
     <>
       {!isAuthenticated && (
@@ -1588,10 +1975,21 @@ const App = () => {
       )}
 
       {isAuthenticated && (
-        <div className="app-shell">
+        <div className={`app-shell${isSidebarCollapsed ? " sidebar-collapsed" : ""}`}>
           <aside className="sidebar" aria-label="Menú principal">
             <div className="sidebar-brand">
-              <img src={logonegativo} alt="BilAI" />
+              <img src={isSidebarCollapsed ? logoicon : logo} alt="BilAI" />
+              <button
+                type="button"
+                className="sidebar-toggle"
+                onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+                aria-label={isSidebarCollapsed ? "Expandir menú" : "Minimizar menú"}
+                title={isSidebarCollapsed ? "Expandir menú" : "Minimizar menú"}
+              >
+                <span className="material-symbols-rounded">
+                  {isSidebarCollapsed ? "chevron_right" : "chevron_left"}
+                </span>
+              </button>
             </div>
             <nav className="sidebar-nav">
               {NAV_ITEMS.map((item) => (
@@ -1602,7 +2000,7 @@ const App = () => {
                   onClick={() => handleMenuSelect(item.view)}
                 >
                   <span className="material-symbols-rounded">{item.icon}</span>
-                  {item.label}
+                  <span className="sidebar-link-label">{item.label}</span>
                 </button>
               ))}
             </nav>
@@ -1610,7 +2008,7 @@ const App = () => {
               <div className="user-avatar" aria-hidden="true">
                 {userInitial}
               </div>
-              <div>
+              <div className="sidebar-user-copy">
                 <strong>{currentUser?.name || "Usuario"}</strong>
                 <p>{currentUser?.email}</p>
               </div>
