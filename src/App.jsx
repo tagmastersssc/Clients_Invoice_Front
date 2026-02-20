@@ -4,6 +4,14 @@ import logo from "/bilailogocompleto.png";
 import logoicon from "/bilailogo.svg";
 
 const LOGIN_APP_URL = import.meta.env.VITE_LOGIN_APP_URL || "http://localhost:5173";
+const SESSION_KEYS = {
+  TOKEN: "token",
+  EMAIL: "user_email",
+  FIRST_NAME: "user_first_name",
+  LAST_NAME: "user_last_name",
+  NAME: "user_name",
+};
+const SESSION_KEY_LIST = Object.values(SESSION_KEYS);
 
 const VIEWS = {
   HOME: "home",
@@ -113,6 +121,74 @@ const getInitial = (name, fallback) => {
     return fallback.trim().charAt(0).toUpperCase();
   }
   return "U";
+};
+
+const persistSession = ({ token, email, firstName, lastName, name }) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(SESSION_KEYS.TOKEN, token);
+  window.sessionStorage.setItem(SESSION_KEYS.EMAIL, email);
+  window.sessionStorage.setItem(SESSION_KEYS.FIRST_NAME, firstName);
+  window.sessionStorage.setItem(SESSION_KEYS.LAST_NAME, lastName);
+  window.sessionStorage.setItem(SESSION_KEYS.NAME, name);
+
+  // Legacy cleanup: avoid reusing stale persistent tokens.
+  SESSION_KEY_LIST.forEach((key) => {
+    window.localStorage.removeItem(key);
+  });
+};
+
+const clearStoredSession = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  SESSION_KEY_LIST.forEach((key) => {
+    window.sessionStorage.removeItem(key);
+    window.localStorage.removeItem(key);
+  });
+};
+
+const getStoredSessionValue = (key) => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.sessionStorage.getItem(key) || "";
+};
+
+const parseJwtPayload = (token) => {
+  if (typeof token !== "string") {
+    return null;
+  }
+
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const decoded = atob(padded);
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+};
+
+const isTokenExpired = (token) => {
+  if (!token) {
+    return true;
+  }
+
+  const payload = parseJwtPayload(token);
+  if (!payload || typeof payload.exp !== "number") {
+    return false;
+  }
+
+  return Date.now() >= payload.exp * 1000;
 };
 
 const generateRowId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
@@ -1048,7 +1124,7 @@ const getSessionFromUrl = () => {
   }
 
   const searchParams = new URLSearchParams(window.location.search);
-  const token = searchParams.get("token");
+  const token = (searchParams.get("token") || "").trim();
   if (!token) {
     return null;
   }
@@ -1058,12 +1134,6 @@ const getSessionFromUrl = () => {
   const lastName = searchParams.get("lastName") || "";
   const name = formatUserName(firstName, lastName, email);
 
-  localStorage.setItem("token", token);
-  localStorage.setItem("user_email", email);
-  localStorage.setItem("user_first_name", firstName);
-  localStorage.setItem("user_last_name", lastName);
-  localStorage.setItem("user_name", name);
-
   searchParams.delete("token");
   searchParams.delete("email");
   searchParams.delete("firstName");
@@ -1071,6 +1141,13 @@ const getSessionFromUrl = () => {
   const cleanQuery = searchParams.toString();
   const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`;
   window.history.replaceState({}, document.title, cleanUrl);
+
+  if (isTokenExpired(token)) {
+    clearStoredSession();
+    return null;
+  }
+
+  persistSession({ token, email, firstName, lastName, name });
 
   return { email, firstName, lastName, name };
 };
@@ -1086,8 +1163,9 @@ const App = () => {
 
   useEffect(() => {
     const sessionFromUrl = getSessionFromUrl();
-    const token = localStorage.getItem("token");
-    if (!token) {
+    const token = getStoredSessionValue(SESSION_KEYS.TOKEN);
+    if (!token || isTokenExpired(token)) {
+      clearStoredSession();
       window.location.replace(LOGIN_APP_URL);
       return;
     }
@@ -1098,10 +1176,10 @@ const App = () => {
       return;
     }
 
-    const email = localStorage.getItem("user_email") || "";
-    const firstName = localStorage.getItem("user_first_name") || "";
-    const lastName = localStorage.getItem("user_last_name") || "";
-    const storedName = localStorage.getItem("user_name");
+    const email = getStoredSessionValue(SESSION_KEYS.EMAIL);
+    const firstName = getStoredSessionValue(SESSION_KEYS.FIRST_NAME);
+    const lastName = getStoredSessionValue(SESSION_KEYS.LAST_NAME);
+    const storedName = getStoredSessionValue(SESSION_KEYS.NAME);
     const name = storedName || formatUserName(firstName, lastName, email);
     setCurrentUser({ email, firstName, lastName, name });
     setSessionReady(true);
@@ -1123,11 +1201,7 @@ const App = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user_email");
-    localStorage.removeItem("user_first_name");
-    localStorage.removeItem("user_last_name");
-    localStorage.removeItem("user_name");
+    clearStoredSession();
     window.location.replace(LOGIN_APP_URL);
   };
 
