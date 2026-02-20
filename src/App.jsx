@@ -3,7 +3,7 @@ import InputField from "./components/InputField";
 import logo from "/bilailogocompleto.png";
 import logoicon from "/bilailogo.svg";
 
-const LOGIN_APP_URL = import.meta.env.VITE_LOGIN_APP_URL || "http://localhost:5173";
+const LOGIN_APP_URL = (import.meta.env.VITE_LOGIN_APP_URL || "/login").trim();
 const SESSION_KEYS = {
   TOKEN: "token",
   EMAIL: "user_email",
