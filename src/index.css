@@ -1481,6 +1481,10 @@ body {
     overflow-x: hidden;
   }
 
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     padding: 10px 12px 12px;
     position: sticky;
