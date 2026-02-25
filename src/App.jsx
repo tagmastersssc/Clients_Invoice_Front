@@ -267,7 +267,7 @@ const InvoiceProductsTable = ({
           const rowErrors = errors[index] || {};
           return (
             <tr key={item.id}>
-              <td>
+              <td data-label="Producto">
                 <div className={`table-input-wrapper${rowErrors.product ? " has-error" : ""}`}>
                   <input
                     type="text"
@@ -280,7 +280,7 @@ const InvoiceProductsTable = ({
                   {rowErrors.product && <p className="input-error">{rowErrors.product}</p>}
                 </div>
               </td>
-              <td>
+              <td data-label="Cantidad">
                 <div className={`table-input-wrapper${rowErrors.quantity ? " has-error" : ""}`}>
                   <input
                     type="number"
@@ -295,7 +295,7 @@ const InvoiceProductsTable = ({
                   {rowErrors.quantity && <p className="input-error">{rowErrors.quantity}</p>}
                 </div>
               </td>
-              <td>
+              <td data-label="Precio">
                 <div className={`table-input-wrapper${rowErrors.price ? " has-error" : ""}`}>
                   <input
                     type="number"
@@ -311,7 +311,7 @@ const InvoiceProductsTable = ({
                 </div>
               </td>
               {includeTaxType && (
-                <td>
+                <td data-label="Impuesto">
                   <div
                     className={`table-input-wrapper select${rowErrors.taxType ? " has-error" : ""}`}
                   >
@@ -328,7 +328,7 @@ const InvoiceProductsTable = ({
                   </div>
                 </td>
               )}
-              <td className="table-actions">
+              <td className="table-actions" data-label="Acciones">
                 <button
                   type="button"
                   className="table-remove-button"
@@ -1381,7 +1381,11 @@ const App = () => {
 
   return (
     <>
-      <div className={`app-shell${isSidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+      <div
+        className={`app-shell${isSidebarCollapsed ? " sidebar-collapsed" : ""}${
+          isMobileViewport ? " is-mobile-viewport" : ""
+        }`}
+      >
         <aside className="sidebar" aria-label="Menú principal">
           <div className="sidebar-brand">
             <img src={isSidebarCollapsed ? logoicon : logo} alt="BilAI" />
@@ -1453,14 +1457,29 @@ const App = () => {
         <div className="app-shell-main">
           <div className="app-shell-surface">
             <header className="app-topbar">
-              <div>
-                <h1>{meta.title}</h1>
-                <p>{meta.description}</p>
+              <div className="app-topbar-main">
+                {isMobileViewport && isSidebarCollapsed && (
+                  <button
+                    type="button"
+                    className="mobile-menu-trigger"
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    aria-label="Abrir menú"
+                    title="Abrir menú"
+                  >
+                    <span className="material-symbols-rounded">menu</span>
+                  </button>
+                )}
+                <div>
+                  <h1>{meta.title}</h1>
+                  <p>{meta.description}</p>
+                </div>
               </div>
-              <button type="button" className="ghost-button" onClick={handleLogout}>
-                <span className="material-symbols-rounded">logout</span>
-                Cerrar sesión
-              </button>
+              <div className="app-topbar-actions">
+                <button type="button" className="ghost-button" onClick={handleLogout}>
+                  <span className="material-symbols-rounded">logout</span>
+                  Cerrar sesión
+                </button>
+              </div>
             </header>
             <main className={`app-content${workflowViews.has(view) ? " app-content--narrow" : ""}`}>
               {renderAuthenticatedContent()}
