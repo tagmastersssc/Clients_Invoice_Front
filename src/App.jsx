@@ -1161,6 +1161,7 @@ const App = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   useEffect(() => {
     const sessionFromUrl = getSessionFromUrl();
@@ -1184,6 +1185,32 @@ const App = () => {
     const name = storedName || formatUserName(firstName, lastName, email);
     setCurrentUser({ email, firstName, lastName, name });
     setSessionReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mobileBreakpoint = window.matchMedia("(max-width: 960px)");
+    const applyViewportMode = (matches) => {
+      setIsMobileViewport(matches);
+      setIsSidebarCollapsed(matches);
+    };
+
+    applyViewportMode(mobileBreakpoint.matches);
+
+    const handleViewportChange = (event) => {
+      applyViewportMode(event.matches);
+    };
+
+    if (typeof mobileBreakpoint.addEventListener === "function") {
+      mobileBreakpoint.addEventListener("change", handleViewportChange);
+      return () => mobileBreakpoint.removeEventListener("change", handleViewportChange);
+    }
+
+    mobileBreakpoint.addListener(handleViewportChange);
+    return () => mobileBreakpoint.removeListener(handleViewportChange);
   }, []);
 
   const transitionTo = (nextView, { message = "Cargando...", afterTransition } = {}) => {
@@ -1257,10 +1284,16 @@ const App = () => {
   const handleMenuSelect = (targetView) => {
     if (workflowViews.has(view) && targetView === VIEWS.HOME) {
       goBackToHome();
+      if (isMobileViewport) {
+        setIsSidebarCollapsed(true);
+      }
       return;
     }
 
     if (targetView === view) {
+      if (isMobileViewport) {
+        setIsSidebarCollapsed(true);
+      }
       return;
     }
 
@@ -1280,6 +1313,9 @@ const App = () => {
     }
 
     transitionTo(targetView, { message: messages[targetView] });
+    if (isMobileViewport) {
+      setIsSidebarCollapsed(true);
+    }
   };
 
   const activeNavView = workflowViews.has(view) ? VIEWS.HOME : view;
@@ -1353,11 +1389,33 @@ const App = () => {
               type="button"
               className="sidebar-toggle"
               onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-              aria-label={isSidebarCollapsed ? "Expandir menú" : "Minimizar menú"}
-              title={isSidebarCollapsed ? "Expandir menú" : "Minimizar menú"}
+              aria-label={
+                isMobileViewport
+                  ? isSidebarCollapsed
+                    ? "Abrir menú"
+                    : "Cerrar menú"
+                  : isSidebarCollapsed
+                    ? "Expandir menú"
+                    : "Minimizar menú"
+              }
+              title={
+                isMobileViewport
+                  ? isSidebarCollapsed
+                    ? "Abrir menú"
+                    : "Cerrar menú"
+                  : isSidebarCollapsed
+                    ? "Expandir menú"
+                    : "Minimizar menú"
+              }
             >
               <span className="material-symbols-rounded">
-                {isSidebarCollapsed ? "chevron_right" : "chevron_left"}
+                {isMobileViewport
+                  ? isSidebarCollapsed
+                    ? "menu"
+                    : "close"
+                  : isSidebarCollapsed
+                    ? "chevron_right"
+                    : "chevron_left"}
               </span>
             </button>
           </div>
@@ -1384,6 +1442,14 @@ const App = () => {
             </div>
           </div>
         </aside>
+        {isMobileViewport && !isSidebarCollapsed && (
+          <button
+            type="button"
+            className="sidebar-backdrop"
+            aria-label="Cerrar menú"
+            onClick={() => setIsSidebarCollapsed(true)}
+          />
+        )}
         <div className="app-shell-main">
           <div className="app-shell-surface">
             <header className="app-topbar">

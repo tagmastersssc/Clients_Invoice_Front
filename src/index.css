@@ -274,6 +274,10 @@ body {
   min-width: 0;
 }
 
+.sidebar-backdrop {
+  display: none;
+}
+
 .app-shell-main {
   display: flex;
   padding: 32px 36px;
@@ -1412,132 +1416,230 @@ body {
   .app-shell {
     grid-template-columns: 1fr;
     height: auto;
+    min-height: 100vh;
     overflow: visible;
   }
 
   .sidebar {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    padding: 18px 24px;
+    padding: 14px 16px 16px;
     position: sticky;
     top: 0;
-    z-index: 20;
+    z-index: 40;
     height: auto;
+    min-height: 0;
     overflow: visible;
-    scrollbar-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
   }
 
   .sidebar::after {
-    background: linear-gradient(90deg, rgba(47, 109, 253, 0.16), transparent 65%);
+    background: linear-gradient(120deg, rgba(47, 109, 253, 0.14), transparent 64%);
+  }
+
+  .sidebar-brand {
+    margin-bottom: 0;
+    width: 100%;
   }
 
   .sidebar-brand img {
-    width: 120px;
+    width: 124px;
   }
 
   .sidebar-nav {
-    display: flex;
-    gap: 0.35rem;
+    margin-top: 12px;
+    max-height: min(56vh, 420px);
+    overflow-y: auto;
+    padding-right: 4px;
   }
 
   .sidebar-link {
-    border-radius: 999px;
-    padding: 0.65rem 1.05rem;
-    width: auto;
-    height: auto;
+    transform: none;
+    width: 100%;
+  }
+
+  .sidebar-link:hover,
+  .sidebar-link:focus-visible {
+    transform: none;
   }
 
   .sidebar-user {
-    margin-top: 0;
-    background: var(--surface-alt);
-  }
-
-  .sidebar-toggle {
-    display: none;
-  }
-
-  .sidebar-link-label {
-    display: inline;
-  }
-
-  .sidebar-user-copy {
-    display: block;
+    margin-top: 12px;
   }
 
   .app-shell.sidebar-collapsed .sidebar {
-    padding: 18px 24px;
+    padding: 14px 16px;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar-nav,
+  .app-shell.sidebar-collapsed .sidebar-user {
+    display: none;
   }
 
   .app-shell.sidebar-collapsed .sidebar-brand {
-    flex-direction: row;
     margin-bottom: 0;
   }
 
   .app-shell.sidebar-collapsed .sidebar-brand img {
-    width: 120px;
+    width: 124px;
   }
 
-  .app-shell.sidebar-collapsed .sidebar-link {
-    padding: 0.65rem 1.05rem;
-    width: auto;
-    height: auto;
-  }
-
-  .app-shell.sidebar-collapsed .sidebar-link-label {
-    display: inline;
-  }
-
-  .app-shell.sidebar-collapsed .sidebar-user {
-    justify-content: flex-start;
-    padding: 1rem;
-  }
-
-  .app-shell.sidebar-collapsed .sidebar-user-copy {
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    border: 0;
     display: block;
+    background: rgba(10, 37, 64, 0.34);
+    backdrop-filter: blur(2px);
   }
 
   .app-shell-main {
-    padding: 24px;
+    padding: 16px;
     height: auto;
     overflow: visible;
   }
 
   .app-shell-surface {
     height: auto;
+    min-height: calc(100vh - 126px);
     overflow: visible;
+    padding: 22px 18px;
+    border-radius: 20px;
   }
 
   .app-content {
     overflow: visible;
+    padding-top: 20px;
+    padding-bottom: 8px;
     padding-right: 0;
+    gap: 24px;
+  }
+
+  .workflow-container {
+    padding: 1.6rem;
+    border-radius: 1.2rem;
+    gap: 1.5rem;
+  }
+
+  .workflow-title {
+    font-size: 1.8rem;
+  }
+
+  .home-hero-text h2 {
+    font-size: 2rem;
+  }
+
+  .view-header h2 {
+    font-size: 1.6rem;
+  }
+
+  .invoice-table {
+    width: max(100%, 700px);
   }
 }
 
 @media (max-width: 640px) {
+  .sidebar {
+    padding: 12px;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar {
+    padding: 12px;
+  }
+
+  .sidebar-brand img,
+  .app-shell.sidebar-collapsed .sidebar-brand img {
+    width: 112px;
+  }
+
+  .app-shell-main {
+    padding: 10px;
+  }
+
   .app-shell-surface {
-    padding: 24px 20px;
-    border-radius: 18px;
+    padding: 16px 12px;
+    border-radius: 16px;
   }
 
   .app-topbar {
     flex-direction: column;
     align-items: flex-start;
+    gap: 0.9rem;
+  }
+
+  .app-topbar h1 {
+    font-size: 1.45rem;
+  }
+
+  .app-topbar p {
+    font-size: 0.92rem;
+  }
+
+  .app-topbar .ghost-button {
+    width: 100%;
+    justify-content: center;
   }
 
   .home-hero {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .home-hero-actions {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+  }
+
+  .home-hero-actions > * {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .home-hero-text h2 {
+    font-size: 1.7rem;
+  }
+
+  .home-hero-card {
+    padding: 1.3rem;
+  }
+
+  .workflow-container {
+    padding: 1.1rem;
+    border-radius: 1rem;
+    gap: 1.2rem;
+  }
+
+  .workflow-title {
+    font-size: 1.45rem;
+  }
+
+  .workflow-subtitle {
+    font-size: 0.93rem;
+  }
+
+  .workflow-card {
+    grid-template-columns: auto 1fr;
+    padding: 1rem;
+  }
+
+  .workflow-arrow {
+    display: none;
+  }
+
+  .invoice-grid {
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
+  }
+
+  .invoice-table-wrapper {
+    margin: 0 -2px;
   }
 
   .clients-table-head,
   .clients-table-row {
     grid-template-columns: 1fr;
     gap: 0.6rem;
+    padding: 0.9rem 1rem;
   }
 
   .clients-table-row span:last-child {
@@ -1548,8 +1650,13 @@ body {
     justify-content: stretch;
   }
 
-  .form-actions button {
+  .form-actions button,
+  .view-header-actions > *,
+  .primary-button,
+  .button-secondary,
+  .ghost-button {
     flex: 1;
+    justify-content: center;
   }
 
   .view-header-actions {
