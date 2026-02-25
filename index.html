@@ -12,6 +12,15 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      window.__BILAI_RUNTIME_CONFIG__ = window.__BILAI_RUNTIME_CONFIG__ || {};
+      (function () {
+        var script = document.createElement("script");
+        script.src = "/api/runtime-config.js";
+        script.async = false;
+        document.head.appendChild(script);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import InputField from "./components/InputField";
 import logo from "/bilailogocompleto.png";
 import logoicon from "/bilailogo.svg";
+import { getRuntimeEnv } from "./runtimeConfig";
 
-const LOGIN_APP_URL = (import.meta.env.VITE_LOGIN_APP_URL || "/login").trim();
+const LOGIN_APP_URL = getRuntimeEnv("VITE_LOGIN_APP_URL", "/login");
 const SESSION_KEYS = {
   TOKEN: "token",
   EMAIL: "user_email",
