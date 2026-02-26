@@ -38,7 +38,7 @@ jobs:
         uses: azure/CLI@v1
         with:
           inlineScript: |
-            echo VITE_LOGIN_APP_URL=$(az keyvault secret show --vault-name Client3-${{github.ref_name}}-eastus --name VITE-LOGIN-APP-URL --query value) >> $GITHUB_ENV
+            echo VITE_LOGIN_APP_URL=$(az keyvault secret show --vault-name kClient3-${{github.ref_name}}-eastus --name VITE-LOGIN-APP-URL --query value) >> $GITHUB_ENV
 
       - name: Build And Deploy
         id: builddeploy
