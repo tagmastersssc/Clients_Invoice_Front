@@ -483,8 +483,8 @@ const SalesView = () => {
         </article>
       </div>
 
-      <div className="panel-table">
-        <div className="panel-table-head">
+      <div className="panel-table panel-table--sales">
+        <div className="panel-table-head panel-table-head--sales">
           <span>Factura</span>
           <span>Cliente</span>
           <span>Canal</span>
@@ -492,12 +492,18 @@ const SalesView = () => {
           <span>Estado</span>
         </div>
         {sales.map((sale) => (
-          <div className="panel-table-row" key={sale.id}>
-            <span className="panel-strong">{sale.id}</span>
-            <span>{sale.client}</span>
-            <span>{sale.channel}</span>
-            <span className="panel-strong">{sale.total}</span>
-            <span className={`status-pill ${sale.statusClass}`}>{sale.status}</span>
+          <div className="panel-table-row panel-table-row--sales" key={sale.id}>
+            <span className="panel-strong" data-label="Factura">
+              {sale.id}
+            </span>
+            <span data-label="Cliente">{sale.client}</span>
+            <span data-label="Canal">{sale.channel}</span>
+            <span className="panel-strong" data-label="Total">
+              {sale.total}
+            </span>
+            <span className={`status-pill panel-status-cell ${sale.statusClass}`} data-label="Estado">
+              {sale.status}
+            </span>
           </div>
         ))}
       </div>
@@ -579,7 +585,7 @@ const InventoryView = () => {
         </article>
       </div>
 
-      <div className="panel-table">
+      <div className="panel-table panel-table--inventory">
         <div className="panel-table-head panel-table-head--inventory">
           <span>Producto</span>
           <span>SKU</span>
@@ -589,7 +595,7 @@ const InventoryView = () => {
         </div>
         {products.map((item) => (
           <div className="panel-table-row panel-table-row--inventory" key={item.sku}>
-            <div className="panel-product">
+            <div className="panel-product panel-product-cell" data-label="Producto">
               <span className="panel-product-avatar" aria-hidden="true">
                 {item.name.charAt(0)}
               </span>
@@ -598,10 +604,14 @@ const InventoryView = () => {
                 <p>Última entrada: hace 2 días</p>
               </div>
             </div>
-            <span>{item.sku}</span>
-            <span className="panel-strong">{item.stock}</span>
-            <span>{item.rotation}</span>
-            <span className={`status-pill ${item.statusClass}`}>{item.status}</span>
+            <span data-label="SKU">{item.sku}</span>
+            <span className="panel-strong" data-label="Stock">
+              {item.stock}
+            </span>
+            <span data-label="Rotación">{item.rotation}</span>
+            <span className={`status-pill panel-status-cell ${item.statusClass}`} data-label="Estado">
+              {item.status}
+            </span>
           </div>
         ))}
       </div>

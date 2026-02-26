@@ -774,6 +774,14 @@ body {
   font-size: 0.74rem;
 }
 
+.panel-product-cell {
+  position: relative;
+}
+
+.panel-status-cell {
+  position: relative;
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1639,8 +1647,89 @@ body {
     font-size: 1.42rem;
   }
 
+  .view-header-actions {
+    width: 100%;
+    gap: 0.55rem;
+  }
+
+  .view-header-actions > * {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
   .invoice-table {
     width: max(100%, 660px);
+  }
+
+  .panel-table {
+    overflow: visible;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .panel-table-head {
+    display: none;
+  }
+
+  .panel-table-row,
+  .panel-table-row--inventory,
+  .panel-table-row--sales {
+    min-width: 0;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 0.82rem;
+    border: 1px solid var(--line);
+    border-radius: 0.86rem;
+    background: var(--surface);
+    box-shadow: 0 8px 20px rgba(23, 48, 82, 0.06);
+  }
+
+  .panel-table-row:not(:last-child) {
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 0.55rem;
+  }
+
+  .panel-table-row--sales > span,
+  .panel-table-row--inventory > span {
+    position: relative;
+    display: grid;
+    gap: 0.2rem;
+    padding-top: 0.82rem;
+  }
+
+  .panel-table-row--sales > span::before,
+  .panel-table-row--inventory > span::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .panel-product-cell {
+    position: relative;
+    padding-top: 0.82rem;
+  }
+
+  .panel-product-cell::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .panel-status-cell {
+    justify-self: flex-start;
   }
 }
 
@@ -1833,17 +1922,10 @@ body {
     justify-content: stretch;
   }
 
-  .view-header-actions > * {
-    flex: 1;
-  }
-
   .panel-table-head,
-  .panel-table-row {
-    min-width: 700px;
-  }
-
+  .panel-table-row,
   .panel-table-head--inventory,
   .panel-table-row--inventory {
-    min-width: 760px;
+    min-width: 0;
   }
 }
