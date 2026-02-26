@@ -1,24 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import SocialLogin from "./components/SocialLogin";
+import { useEffect, useState } from "react";
 import InputField from "./components/InputField";
-import {
-  login,
-  register,
-  requestPasswordReset,
-  resetPassword,
-} from "./api/auth";
 import logo from "/bilailogocompleto.png";
-import logonegativo from "/bilailogocompletonegativo.png";
+import logoicon from "/bilailogo.svg";
+import { getRuntimeEnv } from "./runtimeConfig";
+
+const LOGIN_APP_URL = getRuntimeEnv("VITE_LOGIN_APP_URL", "/login");
+const SESSION_KEYS = {
+  TOKEN: "token",
+  EMAIL: "user_email",
+  FIRST_NAME: "user_first_name",
+  LAST_NAME: "user_last_name",
+  NAME: "user_name",
+};
+const SESSION_KEY_LIST = Object.values(SESSION_KEYS);
 
 const VIEWS = {
-  LOGIN: "login",
-  REGISTER: "register",
-  FORGOT_PASSWORD: "forgot-password",
-  RESET_PASSWORD: "reset-password",
   HOME: "home",
   REGISTER_SALE_MENU: "register-sale",
   ELECTRONIC_INVOICE: "electronic-invoice",
   GENERIC_INVOICE: "generic-invoice",
+  SALES: "sales",
+  INVENTORY: "inventory",
   DASHBOARDS: "dashboards",
   CLIENTS: "clients",
   TRANSACTIONS: "transactions",
@@ -28,6 +30,8 @@ const VIEWS = {
 
 const NAV_ITEMS = [
   { label: "Inicio", icon: "home", view: VIEWS.HOME },
+  { label: "Ventas", icon: "insights", view: VIEWS.SALES },
+  { label: "Inventario", icon: "inventory_2", view: VIEWS.INVENTORY },
   { label: "Dashboards", icon: "query_stats", view: VIEWS.DASHBOARDS },
   { label: "Clientes", icon: "group", view: VIEWS.CLIENTS },
   { label: "Transacciones", icon: "receipt_long", view: VIEWS.TRANSACTIONS },
@@ -72,44 +76,15 @@ const VIEW_META = {
     title: "Factura genérica",
     description: "Registra ventas rápidas con los datos esenciales.",
   },
+  [VIEWS.SALES]: {
+    title: "Ventas",
+    description: "Consulta el rendimiento comercial y detecta oportunidades de crecimiento.",
+  },
+  [VIEWS.INVENTORY]: {
+    title: "Inventario",
+    description: "Visualiza existencias, rotación y alertas en un solo lugar.",
+  },
 };
-
-const initialLoginState = { email: "", password: "" };
-const initialRegisterState = {
-  firstName: "",
-  lastName: "",
-  email: "",
-  password: "",
-  confirmPassword: "",
-};
-
-const CODE_LENGTH = 6;
-
-const passwordValidators = [
-  {
-    test: (value) => value.length >= 8,
-    message: "Debe tener al menos 8 caracteres.",
-  },
-  {
-    test: (value) => /[A-Z]/.test(value),
-    message: "Debe incluir una letra mayúscula.",
-  },
-  {
-    test: (value) => /[a-z]/.test(value),
-    message: "Debe incluir una letra minúscula.",
-  },
-  {
-    test: (value) => /\d/.test(value),
-    message: "Debe incluir un número.",
-  },
-  {
-    test: (value) => /[^A-Za-z0-9]/.test(value),
-    message: "Debe incluir un caracter especial.",
-  },
-];
-
-const validatePassword = (password) =>
-  passwordValidators.filter(({ test }) => !test(password)).map(({ message }) => message);
 
 const capitalizeName = (value) => {
   if (!value) return "";
@@ -149,522 +124,232 @@ const getInitial = (name, fallback) => {
   return "U";
 };
 
-const OneTimeCodeInput = ({ value, onChange, error }) => {
-  const safeValue = (value ?? "").replace(/\D/g, "").slice(0, CODE_LENGTH);
-  const inputsRef = useRef([]);
+const persistSession = ({ token, email, firstName, lastName, name }) => {
+  if (typeof window === "undefined") {
+    return;
+  }
 
-  useEffect(() => {
-    const nextIndex = safeValue.length;
-    if (nextIndex < CODE_LENGTH && inputsRef.current[nextIndex]) {
-      inputsRef.current[nextIndex].focus();
-    }
-  }, [safeValue]);
+  window.sessionStorage.setItem(SESSION_KEYS.TOKEN, token);
+  window.sessionStorage.setItem(SESSION_KEYS.EMAIL, email);
+  window.sessionStorage.setItem(SESSION_KEYS.FIRST_NAME, firstName);
+  window.sessionStorage.setItem(SESSION_KEYS.LAST_NAME, lastName);
+  window.sessionStorage.setItem(SESSION_KEYS.NAME, name);
 
-  const digitsFromValue = () => {
-    const base = Array.from({ length: CODE_LENGTH }, (_, index) => safeValue[index] ?? "");
-    return base;
-  };
-
-  const commitDigits = (digits) => {
-    const nextValue = digits.join("").replace(/\D/g, "").slice(0, CODE_LENGTH);
-    onChange(nextValue);
-  };
-
-  const handleChange = (event, index) => {
-    const inputValue = event.target.value.replace(/\D/g, "");
-    const digits = digitsFromValue();
-
-    if (!inputValue) {
-      digits[index] = "";
-      commitDigits(digits);
-      return;
-    }
-
-    inputValue.split("").forEach((digit, offset) => {
-      const targetIndex = index + offset;
-      if (targetIndex < CODE_LENGTH) {
-        digits[targetIndex] = digit;
-      }
-    });
-
-    commitDigits(digits);
-
-    const nextIndex = Math.min(index + inputValue.length, CODE_LENGTH - 1);
-    const nextInput = inputsRef.current[nextIndex];
-    if (nextInput) {
-      nextInput.focus();
-      nextInput.select();
-    }
-  };
-
-  const handleKeyDown = (event, index) => {
-    if (event.key === "Backspace") {
-      event.preventDefault();
-      const digits = digitsFromValue();
-      if (digits[index]) {
-        digits[index] = "";
-        commitDigits(digits);
-        return;
-      }
-      if (index > 0) {
-        digits[index - 1] = "";
-        commitDigits(digits);
-        inputsRef.current[index - 1]?.focus();
-      }
-    }
-
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      const prevIndex = Math.max(index - 1, 0);
-      inputsRef.current[prevIndex]?.focus();
-    }
-
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      const nextIndex = Math.min(index + 1, CODE_LENGTH - 1);
-      inputsRef.current[nextIndex]?.focus();
-    }
-  };
-
-  const handlePaste = (event) => {
-    event.preventDefault();
-    const clipboardData = event.clipboardData.getData("text");
-    const sanitized = clipboardData.replace(/\D/g, "").slice(0, CODE_LENGTH);
-    const digits = digitsFromValue();
-    sanitized.split("").forEach((digit, index) => {
-      if (index < CODE_LENGTH) {
-        digits[index] = digit;
-      }
-    });
-    commitDigits(digits);
-    if (sanitized.length) {
-      const nextIndex = Math.min(sanitized.length, CODE_LENGTH) - 1;
-      inputsRef.current[nextIndex]?.focus();
-    }
-  };
-
-  const digits = digitsFromValue();
-
-  return (
-    <div className={`otp-input-group${error ? " has-error" : ""}`}>
-      <div className="otp-input-row">
-        {digits.map((digit, index) => (
-          <input
-            key={index}
-            type="text"
-            inputMode="numeric"
-            maxLength={1}
-            value={digit.trim()}
-            onChange={(event) => handleChange(event, index)}
-            onKeyDown={(event) => handleKeyDown(event, index)}
-            onPaste={handlePaste}
-            ref={(element) => {
-              inputsRef.current[index] = element;
-            }}
-            className="otp-input"
-            aria-label={`Dígito ${index + 1} del código`}
-          />
-        ))}
-      </div>
-      {error && <p className="input-error">{error}</p>}
-    </div>
-  );
-};
-
-const LoginForm = ({ onRegisterLinkClick, onForgotPassword, onSuccess }) => {
-  const [formData, setFormData] = useState(initialLoginState);
-  const [error, setError] = useState("");
-
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setError("");
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError("");
-
-    try {
-      const email = formData.email.trim();
-      const response = await login(email, formData.password);
-      onSuccess({
-        token: response.token,
-        email,
-        firstName: response.first_name,
-        lastName: response.last_name,
-      });
-      setFormData(initialLoginState);
-    } catch (err) {
-      setError(err.message || "No se pudo iniciar sesión");
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="login-form">
-      <InputField
-        type="email"
-        placeholder="Correo electrónico"
-        icon="mail"
-        value={formData.email}
-        onChange={handleChange}
-        autoComplete="email"
-        name="email"
-      />
-      <InputField
-        type="password"
-        placeholder="Contraseña"
-        icon="lock"
-        value={formData.password}
-        onChange={handleChange}
-        autoComplete="current-password"
-        name="password"
-      />
-      <button
-        type="button"
-        className="forgot-password-link"
-        onClick={onForgotPassword}
-      >
-        ¿Olvidaste tu contraseña?
-      </button>
-      <button type="submit" className="login-button">
-        Ingresar
-      </button>
-      <p className="signup-prompt">
-        ¿No tienes una cuenta?{" "}
-        <button type="button" onClick={onRegisterLinkClick} className="link-button">
-          Regístrate
-        </button>
-      </p>
-      {error && <p className="form-feedback">{error}</p>}
-    </form>
-  );
-};
-
-const RegisterForm = ({ onLoginLinkClick }) => {
-  const [formData, setFormData] = useState(initialRegisterState);
-  const [errors, setErrors] = useState({});
-  const [feedback, setFeedback] = useState("");
-
-  const passwordErrorMessages = useMemo(
-    () => validatePassword(formData.password),
-    [formData.password]
-  );
-
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: "" }));
-    setFeedback("");
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const newErrors = {};
-    setFeedback("");
-
-    const email = formData.email.trim();
-    const firstName = formData.firstName.trim();
-    const lastName = formData.lastName.trim();
-
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!firstName) {
-      newErrors.firstName = "Ingresa tus nombres.";
-    }
-
-    if (!lastName) {
-      newErrors.lastName = "Ingresa tus apellidos.";
-    }
-
-    if (!email) {
-      newErrors.email = "El correo es obligatorio.";
-    } else if (!emailPattern.test(email)) {
-      newErrors.email = "Ingresa un correo electrónico válido.";
-    }
-
-    if (passwordErrorMessages.length) {
-      newErrors.password = passwordErrorMessages.join(" ");
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = "Las contraseñas no coinciden.";
-    }
-
-    if (Object.keys(newErrors).length) {
-      setErrors(newErrors);
-      return;
-    }
-
-    try {
-      await register({
-        email,
-        password: formData.password,
-        firstName,
-        lastName,
-      });
-      onLoginLinkClick("Cuenta creada. Inicia sesión para continuar.");
-      setFormData(initialRegisterState);
-    } catch (error) {
-      setFeedback(error.message || "No pudimos crear tu cuenta.");
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="login-form">
-      <InputField
-        type="text"
-        placeholder="Nombres"
-        icon="badge"
-        value={formData.firstName}
-        onChange={handleChange}
-        autoComplete="given-name"
-        error={errors.firstName}
-        name="firstName"
-      />
-      <InputField
-        type="text"
-        placeholder="Apellidos"
-        icon="badge"
-        value={formData.lastName}
-        onChange={handleChange}
-        autoComplete="family-name"
-        error={errors.lastName}
-        name="lastName"
-      />
-      <InputField
-        type="email"
-        placeholder="Correo electrónico"
-        icon="mail"
-        value={formData.email}
-        onChange={handleChange}
-        autoComplete="email"
-        error={errors.email}
-        name="email"
-      />
-      <InputField
-        type="password"
-        placeholder="Contraseña"
-        icon="lock"
-        value={formData.password}
-        onChange={handleChange}
-        autoComplete="new-password"
-        error={errors.password}
-        name="password"
-      />
-      <InputField
-        type="password"
-        placeholder="Confirma tu contraseña"
-        icon="lock"
-        value={formData.confirmPassword}
-        onChange={handleChange}
-        autoComplete="new-password"
-        error={errors.confirmPassword}
-        name="confirmPassword"
-      />
-      <button type="submit" className="register-button">
-        Registrarse
-      </button>
-      <p className="login-prompt">
-        ¿Ya tienes cuenta?{" "}
-        <button type="button" onClick={() => onLoginLinkClick("")} className="link-button">
-          Inicia sesión
-        </button>
-      </p>
-      {feedback && <p className="form-feedback">{feedback}</p>}
-    </form>
-  );
-};
-
-const ForgotPasswordForm = ({ onBack, onSuccess, initialEmail = "" }) => {
-  const [email, setEmail] = useState(initialEmail);
-  const [error, setError] = useState("");
-  const [feedback, setFeedback] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    setEmail(initialEmail);
-  }, [initialEmail]);
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError("");
-    setFeedback("");
-
-    const trimmedEmail = email.trim();
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!trimmedEmail) {
-      setError("Ingresa tu correo electrónico.");
-      return;
-    }
-
-    if (!emailPattern.test(trimmedEmail)) {
-      setError("Introduce un correo válido.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const response = await requestPasswordReset(trimmedEmail);
-      setFeedback(
-        response?.message ||
-          "Te enviamos un código de verificación de seis dígitos a tu correo."
-      );
-      onSuccess({ email: trimmedEmail });
-    } catch (err) {
-      const message = err.message || "No pudimos iniciar el proceso de recuperación.";
-      setError(message);
-      setFeedback(message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="login-form">
-      <p className="form-intro">
-        Ingresa el correo asociado a tu cuenta y te ayudaremos a restablecer tu contraseña.
-      </p>
-      <InputField
-        type="email"
-        placeholder="Correo electrónico"
-        icon="mail"
-        value={email}
-        onChange={(event) => {
-          setEmail(event.target.value);
-          setError("");
-          setFeedback("");
-        }}
-        autoComplete="email"
-        error={error}
-        name="resetEmail"
-      />
-      <button type="submit" className="register-button" disabled={isSubmitting}>
-        {isSubmitting ? "Enviando instrucciones..." : "Enviar instrucciones"}
-      </button>
-      <p className="login-prompt">
-        ¿Recordaste tu contraseña?{" "}
-        <button type="button" onClick={onBack} className="link-button">
-          Volver al inicio de sesión
-        </button>
-      </p>
-      {feedback && <p className="form-feedback">{feedback}</p>}
-    </form>
-  );
-};
-
-const ResetPasswordForm = ({ onBack, onComplete, email }) => {
-  const [formData, setFormData] = useState({
-    code: "",
-    newPassword: "",
-    confirmPassword: "",
+  // Legacy cleanup: avoid reusing stale persistent tokens.
+  SESSION_KEY_LIST.forEach((key) => {
+    window.localStorage.removeItem(key);
   });
-  const [errors, setErrors] = useState({});
-  const [feedback, setFeedback] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const passwordErrorMessages = useMemo(
-    () => validatePassword(formData.newPassword),
-    [formData.newPassword]
-  );
-
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: "" }));
-    setFeedback("");
-  };
-
-  const handleCodeChange = (nextValue) => {
-    setFormData((prev) => ({ ...prev, code: nextValue }));
-    setErrors((prev) => ({ ...prev, code: "" }));
-    setFeedback("");
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const newErrors = {};
-
-    if (formData.code.trim().length !== CODE_LENGTH) {
-      newErrors.code = "Ingresa el código completo.";
-    }
-
-    if (passwordErrorMessages.length) {
-      newErrors.newPassword = passwordErrorMessages.join(" ");
-    }
-
-    if (formData.newPassword !== formData.confirmPassword) {
-      newErrors.confirmPassword = "Las contraseñas no coinciden.";
-    }
-
-    if (Object.keys(newErrors).length) {
-      setErrors(newErrors);
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await resetPassword(formData.code.trim(), formData.newPassword);
-      onComplete();
-    } catch (err) {
-      setFeedback(err.message || "No pudimos actualizar tu contraseña.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="login-form">
-      <p className="form-intro">
-        Introduce el código de verificación y define tu nueva contraseña
-        {email ? (
-          <>
-            {" "}
-            para <strong>{email}</strong>
-          </>
-        ) : null}
-        .
-      </p>
-      <div className="otp-field-wrapper">
-        <span className="material-symbols-rounded" aria-hidden="true">
-          key
-        </span>
-        <OneTimeCodeInput value={formData.code} onChange={handleCodeChange} error={errors.code} />
-      </div>
-      <InputField
-        type="password"
-        placeholder="Nueva contraseña"
-        icon="lock"
-        value={formData.newPassword}
-        onChange={handleChange}
-        autoComplete="new-password"
-        error={errors.newPassword}
-        name="newPassword"
-      />
-      <InputField
-        type="password"
-        placeholder="Confirma tu contraseña"
-        icon="lock"
-        value={formData.confirmPassword}
-        onChange={handleChange}
-        autoComplete="new-password"
-        error={errors.confirmPassword}
-        name="confirmPassword"
-      />
-      <button type="submit" className="register-button" disabled={isSubmitting}>
-        {isSubmitting ? "Actualizando..." : "Actualizar contraseña"}
-      </button>
-      <p className="login-prompt">
-        ¿Necesitas otro token?{" "}
-        <button type="button" onClick={onBack} className="link-button">
-          Volver a solicitarlo
-        </button>
-      </p>
-      {feedback && <p className="form-feedback">{feedback}</p>}
-    </form>
-  );
 };
+
+const clearStoredSession = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  SESSION_KEY_LIST.forEach((key) => {
+    window.sessionStorage.removeItem(key);
+    window.localStorage.removeItem(key);
+  });
+};
+
+const getStoredSessionValue = (key) => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.sessionStorage.getItem(key) || "";
+};
+
+const parseJwtPayload = (token) => {
+  if (typeof token !== "string") {
+    return null;
+  }
+
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const decoded = atob(padded);
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+};
+
+const isTokenExpired = (token) => {
+  if (!token) {
+    return true;
+  }
+
+  const payload = parseJwtPayload(token);
+  if (!payload || typeof payload.exp !== "number") {
+    return false;
+  }
+
+  return Date.now() >= payload.exp * 1000;
+};
+
+const generateRowId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+
+const createProductRow = () => ({
+  id: generateRowId(),
+  product: "",
+  quantity: "",
+  price: "",
+  taxType: "",
+});
+
+const validateProductRows = (products, { requireTaxType = false } = {}) => {
+  const rowErrors = products.map(() => ({}));
+  let hasErrors = false;
+
+  products.forEach((item, index) => {
+    const currentErrors = rowErrors[index];
+    const productName = (item.product ?? "").trim();
+    if (!productName) {
+      currentErrors.product = "Describe el producto.";
+      hasErrors = true;
+    }
+
+    const quantityRaw = item.quantity ?? "";
+    const quantityValue = Number(quantityRaw);
+    if (!quantityRaw) {
+      currentErrors.quantity = "Indica la cantidad.";
+      hasErrors = true;
+    } else if (Number.isNaN(quantityValue) || quantityValue <= 0) {
+      currentErrors.quantity = "La cantidad debe ser mayor a cero.";
+      hasErrors = true;
+    }
+
+    const priceRaw = item.price ?? "";
+    const priceValue = Number(priceRaw);
+    if (!priceRaw) {
+      currentErrors.price = "Indica el precio.";
+      hasErrors = true;
+    } else if (Number.isNaN(priceValue) || priceValue <= 0) {
+      currentErrors.price = "El precio debe ser mayor a cero.";
+      hasErrors = true;
+    }
+
+    if (requireTaxType && !item.taxType) {
+      currentErrors.taxType = "Selecciona el tipo de impuesto.";
+      hasErrors = true;
+    }
+  });
+
+  return { errors: rowErrors, hasErrors };
+};
+
+const InvoiceProductsTable = ({
+  products,
+  errors = [],
+  includeTaxType,
+  onProductChange,
+  onAddProduct,
+  onRemoveProduct,
+}) => (
+  <div className="invoice-table-wrapper">
+    <table className="invoice-table">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Cantidad</th>
+          <th>Precio</th>
+          {includeTaxType && <th>Impuesto</th>}
+          <th className="table-actions-header">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {products.map((item, index) => {
+          const rowErrors = errors[index] || {};
+          return (
+            <tr key={item.id}>
+              <td data-label="Producto">
+                <div className={`table-input-wrapper${rowErrors.product ? " has-error" : ""}`}>
+                  <input
+                    type="text"
+                    className="table-input"
+                    placeholder="Descripción del producto"
+                    value={item.product}
+                    onChange={(event) => onProductChange(index, "product", event.target.value)}
+                    autoComplete="off"
+                  />
+                  {rowErrors.product && <p className="input-error">{rowErrors.product}</p>}
+                </div>
+              </td>
+              <td data-label="Cantidad">
+                <div className={`table-input-wrapper${rowErrors.quantity ? " has-error" : ""}`}>
+                  <input
+                    type="number"
+                    className="table-input"
+                    placeholder="0"
+                    value={item.quantity}
+                    onChange={(event) => onProductChange(index, "quantity", event.target.value)}
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                  />
+                  {rowErrors.quantity && <p className="input-error">{rowErrors.quantity}</p>}
+                </div>
+              </td>
+              <td data-label="Precio">
+                <div className={`table-input-wrapper${rowErrors.price ? " has-error" : ""}`}>
+                  <input
+                    type="number"
+                    className="table-input"
+                    placeholder="0.00"
+                    value={item.price}
+                    onChange={(event) => onProductChange(index, "price", event.target.value)}
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                  />
+                  {rowErrors.price && <p className="input-error">{rowErrors.price}</p>}
+                </div>
+              </td>
+              {includeTaxType && (
+                <td data-label="Impuesto">
+                  <div
+                    className={`table-input-wrapper select${rowErrors.taxType ? " has-error" : ""}`}
+                  >
+                    <select
+                      value={item.taxType}
+                      onChange={(event) => onProductChange(index, "taxType", event.target.value)}
+                    >
+                      <option value="">Tipo de impuesto</option>
+                      <option value="iva19">IVA 19%</option>
+                      <option value="iva5">IVA 5%</option>
+                      <option value="exento">Exento</option>
+                    </select>
+                    {rowErrors.taxType && <p className="input-error">{rowErrors.taxType}</p>}
+                  </div>
+                </td>
+              )}
+              <td className="table-actions" data-label="Acciones">
+                <button
+                  type="button"
+                  className="table-remove-button"
+                  onClick={() => onRemoveProduct(index)}
+                  disabled={products.length === 1}
+                  aria-label={`Eliminar producto ${index + 1}`}
+                >
+                  <span className="material-symbols-rounded">delete</span>
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+    <button type="button" className="table-add-button" onClick={onAddProduct}>
+      <span className="material-symbols-rounded">add</span>
+      Agregar producto
+    </button>
+  </div>
+);
 
 const HomeView = ({ onRegisterSale, onViewSales, onInventory, feedback }) => (
   <section className="home-view" aria-labelledby="home-heading">
@@ -723,6 +408,216 @@ const HomeView = ({ onRegisterSale, onViewSales, onInventory, feedback }) => (
     {feedback && <p className="home-feedback">{feedback}</p>}
   </section>
 );
+
+const SalesView = () => {
+  const sales = [
+    {
+      id: "FE-3482",
+      client: "Innovar S.A.",
+      channel: "Factura electrónica",
+      total: "$4,850",
+      status: "Pagada",
+      statusClass: "status-pill--success",
+    },
+    {
+      id: "FG-1294",
+      client: "Retail Nova",
+      channel: "Factura genérica",
+      total: "$1,920",
+      status: "Pendiente",
+      statusClass: "status-pill--warning",
+    },
+    {
+      id: "FE-3478",
+      client: "Bazar 24",
+      channel: "Factura electrónica",
+      total: "$3,410",
+      status: "Pagada",
+      statusClass: "status-pill--success",
+    },
+    {
+      id: "FG-1289",
+      client: "LogiMax",
+      channel: "Factura genérica",
+      total: "$760",
+      status: "Revisar",
+      statusClass: "status-pill--info",
+    },
+  ];
+
+  return (
+    <section className="sales-view" aria-labelledby="sales-heading">
+      <div className="view-header">
+        <div>
+          <p className="section-kicker">Rendimiento comercial</p>
+          <h2 id="sales-heading">Ventas con contexto de negocio</h2>
+          <p>Analiza resultados diarios, ticket promedio y estado de tus ventas recientes.</p>
+        </div>
+        <div className="view-header-actions">
+          <button type="button" className="ghost-button">
+            <span className="material-symbols-rounded">calendar_today</span>
+            Últimos 30 días
+          </button>
+          <button type="button" className="primary-button">
+            <span className="material-symbols-rounded">file_download</span>
+            Exportar
+          </button>
+        </div>
+      </div>
+
+      <div className="performance-grid">
+        <article className="performance-card">
+          <p>Ventas del día</p>
+          <h3>$18,250</h3>
+          <span className="status-pill status-pill--success">+12% vs ayer</span>
+        </article>
+        <article className="performance-card">
+          <p>Ticket promedio</p>
+          <h3>$312</h3>
+          <span className="status-pill status-pill--info">+4.6% semanal</span>
+        </article>
+        <article className="performance-card">
+          <p>Ventas facturadas</p>
+          <h3>94</h3>
+          <span className="status-pill status-pill--warning">8 en seguimiento</span>
+        </article>
+      </div>
+
+      <div className="panel-table panel-table--sales">
+        <div className="panel-table-head panel-table-head--sales">
+          <span>Factura</span>
+          <span>Cliente</span>
+          <span>Canal</span>
+          <span>Total</span>
+          <span>Estado</span>
+        </div>
+        {sales.map((sale) => (
+          <div className="panel-table-row panel-table-row--sales" key={sale.id}>
+            <span className="panel-strong" data-label="Factura">
+              {sale.id}
+            </span>
+            <span data-label="Cliente">{sale.client}</span>
+            <span data-label="Canal">{sale.channel}</span>
+            <span className="panel-strong" data-label="Total">
+              {sale.total}
+            </span>
+            <span className={`status-pill panel-status-cell ${sale.statusClass}`} data-label="Estado">
+              {sale.status}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+const InventoryView = () => {
+  const products = [
+    {
+      name: "Cámara Web Pro",
+      sku: "CW-4902",
+      stock: "26",
+      rotation: "Alta",
+      status: "Óptimo",
+      statusClass: "status-pill--success",
+    },
+    {
+      name: "Teclado Mecánico K2",
+      sku: "TK-1120",
+      stock: "8",
+      rotation: "Media",
+      status: "Bajo stock",
+      statusClass: "status-pill--warning",
+    },
+    {
+      name: "Mouse Inalámbrico MX",
+      sku: "MS-7744",
+      stock: "42",
+      rotation: "Alta",
+      status: "Óptimo",
+      statusClass: "status-pill--success",
+    },
+    {
+      name: "Hub USB-C 7 en 1",
+      sku: "HB-3198",
+      stock: "5",
+      rotation: "Alta",
+      status: "Crítico",
+      statusClass: "status-pill--danger",
+    },
+  ];
+
+  return (
+    <section className="inventory-view" aria-labelledby="inventory-heading">
+      <div className="view-header">
+        <div>
+          <p className="section-kicker">Control de existencias</p>
+          <h2 id="inventory-heading">Inventario con alertas accionables</h2>
+          <p>Visualiza disponibilidad, rotación y productos que requieren reposición.</p>
+        </div>
+        <div className="view-header-actions">
+          <button type="button" className="ghost-button">
+            <span className="material-symbols-rounded">qr_code_scanner</span>
+            Escanear SKU
+          </button>
+          <button type="button" className="primary-button">
+            <span className="material-symbols-rounded">add</span>
+            Nuevo producto
+          </button>
+        </div>
+      </div>
+
+      <div className="performance-grid">
+        <article className="performance-card">
+          <p>Productos activos</p>
+          <h3>428</h3>
+          <span className="status-pill status-pill--success">95% disponibles</span>
+        </article>
+        <article className="performance-card">
+          <p>Valor inventario</p>
+          <h3>$94,320</h3>
+          <span className="status-pill status-pill--info">Actualizado hoy</span>
+        </article>
+        <article className="performance-card">
+          <p>Alertas de stock</p>
+          <h3>13</h3>
+          <span className="status-pill status-pill--warning">5 críticas</span>
+        </article>
+      </div>
+
+      <div className="panel-table panel-table--inventory">
+        <div className="panel-table-head panel-table-head--inventory">
+          <span>Producto</span>
+          <span>SKU</span>
+          <span>Stock</span>
+          <span>Rotación</span>
+          <span>Estado</span>
+        </div>
+        {products.map((item) => (
+          <div className="panel-table-row panel-table-row--inventory" key={item.sku}>
+            <div className="panel-product panel-product-cell" data-label="Producto">
+              <span className="panel-product-avatar" aria-hidden="true">
+                {item.name.charAt(0)}
+              </span>
+              <div>
+                <strong>{item.name}</strong>
+                <p>Última entrada: hace 2 días</p>
+              </div>
+            </div>
+            <span data-label="SKU">{item.sku}</span>
+            <span className="panel-strong" data-label="Stock">
+              {item.stock}
+            </span>
+            <span data-label="Rotación">{item.rotation}</span>
+            <span className={`status-pill panel-status-cell ${item.statusClass}`} data-label="Estado">
+              {item.status}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
 
 const DashboardsView = () => (
   <section className="dashboards-view" aria-labelledby="dashboards-heading">
@@ -983,18 +878,40 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
     customerName: "",
     taxId: "",
     customerEmail: "",
-    product: "",
-    quantity: "",
-    price: "",
-    taxType: "",
   });
   const [errors, setErrors] = useState({});
+  const [products, setProducts] = useState([createProductRow()]);
+  const [productErrors, setProductErrors] = useState([{}]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setErrors((prev) => ({ ...prev, [name]: "" }));
+  };
+
+  const handleProductChange = (index, field, value) => {
+    setProducts((prev) =>
+      prev.map((item, rowIndex) => (rowIndex === index ? { ...item, [field]: value } : item))
+    );
+    setProductErrors((prev) =>
+      prev.map((rowError, rowIndex) =>
+        rowIndex === index ? { ...rowError, [field]: "" } : rowError
+      )
+    );
+  };
+
+  const addProductRow = () => {
+    setProducts((prev) => [...prev, createProductRow()]);
+    setProductErrors((prev) => [...prev, {}]);
+  };
+
+  const removeProductRow = (index) => {
+    if (products.length === 1) {
+      return;
+    }
+    setProducts((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
+    setProductErrors((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
   };
 
   const handleSubmit = (event) => {
@@ -1012,30 +929,18 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.customerEmail)) {
       newErrors.customerEmail = "Ingresa un correo válido.";
     }
-    if (!formData.product.trim()) {
-      newErrors.product = "Describe el producto.";
-    }
-
-    const quantityValue = Number(formData.quantity);
-    if (!formData.quantity) {
-      newErrors.quantity = "Indica la cantidad.";
-    } else if (Number.isNaN(quantityValue) || quantityValue <= 0) {
-      newErrors.quantity = "La cantidad debe ser mayor a cero.";
-    }
-
-    const priceValue = Number(formData.price);
-    if (!formData.price) {
-      newErrors.price = "Indica el precio unitario.";
-    } else if (Number.isNaN(priceValue) || priceValue <= 0) {
-      newErrors.price = "El precio debe ser mayor a cero.";
-    }
-
-    if (!formData.taxType) {
-      newErrors.taxType = "Selecciona el tipo de impuesto.";
-    }
+    const { errors: rowErrors, hasErrors } = validateProductRows(products, {
+      requireTaxType: true,
+    });
+    setProductErrors(rowErrors);
 
     if (Object.keys(newErrors).length) {
       setErrors(newErrors);
+    } else {
+      setErrors({});
+    }
+
+    if (Object.keys(newErrors).length || hasErrors) {
       return;
     }
 
@@ -1062,91 +967,54 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
         </p>
       </header>
       <form className="invoice-form" onSubmit={handleSubmit} noValidate>
-        <div className="invoice-grid">
-          <InputField
-            type="text"
-            placeholder="Nombre del cliente"
-            icon="person"
-            value={formData.customerName}
-            onChange={handleChange}
-            name="customerName"
-            error={errors.customerName}
-            autoComplete="name"
-          />
-          <InputField
-            type="text"
-            placeholder="Cédula o NIT"
-            icon="badge"
-            value={formData.taxId}
-            onChange={handleChange}
-            name="taxId"
-            error={errors.taxId}
-            autoComplete="off"
-          />
-          <InputField
-            type="email"
-            placeholder="Correo del cliente"
-            icon="mail"
-            value={formData.customerEmail}
-            onChange={handleChange}
-            name="customerEmail"
-            error={errors.customerEmail}
-            autoComplete="email"
-          />
-          <InputField
-            type="text"
-            placeholder="Producto"
-            icon="shopping_bag"
-            value={formData.product}
-            onChange={handleChange}
-            name="product"
-            error={errors.product}
-            autoComplete="off"
-          />
-          <InputField
-            type="number"
-            placeholder="Cantidad"
-            icon="format_list_numbered"
-            value={formData.quantity}
-            onChange={handleChange}
-            name="quantity"
-            error={errors.quantity}
-            min="0"
-            step="1"
-            inputMode="numeric"
-          />
-          <InputField
-            type="number"
-            placeholder="Precio"
-            icon="attach_money"
-            value={formData.price}
-            onChange={handleChange}
-            name="price"
-            error={errors.price}
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-          />
-          <div className={`input-wrapper select${errors.taxType ? " has-error" : ""}`}>
-            <select
-              className="input-field"
-              value={formData.taxType}
+        <div className="invoice-section">
+          <h3 className="invoice-section-title">Datos del cliente</h3>
+          <div className="invoice-grid">
+            <InputField
+              type="text"
+              placeholder="Nombre del cliente"
+              icon="person"
+              value={formData.customerName}
               onChange={handleChange}
-              name="taxType"
-              aria-invalid={Boolean(errors.taxType)}
-            >
-              <option value="">Tipo de impuesto</option>
-              <option value="iva19">IVA 19%</option>
-              <option value="iva5">IVA 5%</option>
-              <option value="exento">Exento</option>
-            </select>
-            <i className="material-symbols-rounded">percent</i>
-            {errors.taxType && (
-              <p className="input-error" id="taxType-error">
-                {errors.taxType}
-              </p>
-            )}
+              name="customerName"
+              error={errors.customerName}
+              autoComplete="name"
+            />
+            <InputField
+              type="text"
+              placeholder="Cédula o NIT"
+              icon="badge"
+              value={formData.taxId}
+              onChange={handleChange}
+              name="taxId"
+              error={errors.taxId}
+              autoComplete="off"
+            />
+            <InputField
+              type="email"
+              placeholder="Correo del cliente"
+              icon="mail"
+              value={formData.customerEmail}
+              onChange={handleChange}
+              name="customerEmail"
+              error={errors.customerEmail}
+              autoComplete="email"
+            />
           </div>
+        </div>
+        <div className="invoice-section">
+          <h3 className="invoice-section-title">Productos</h3>
+          <p className="invoice-section-subtitle">
+            Agrega cada producto incluido en la factura y define su impuesto correspondiente.
+          </p>
+          <InvoiceProductsTable
+            products={products}
+            errors={productErrors}
+            includeTaxType
+            onProductChange={handleProductChange}
+            onAddProduct={addProductRow}
+            onRemoveProduct={removeProductRow}
+          />
         </div>
         <div className="form-actions">
           <button type="button" className="button-secondary" onClick={onBack}>
@@ -1162,44 +1030,39 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
 };
 
 const GenericInvoiceForm = ({ onBack, onSubmit }) => {
-  const [formData, setFormData] = useState({
-    product: "",
-    quantity: "",
-    price: "",
-  });
-  const [errors, setErrors] = useState({});
+  const [products, setProducts] = useState([createProductRow()]);
+  const [productErrors, setProductErrors] = useState([{}]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setErrors((prev) => ({ ...prev, [name]: "" }));
+  const handleProductChange = (index, field, value) => {
+    setProducts((prev) =>
+      prev.map((item, rowIndex) => (rowIndex === index ? { ...item, [field]: value } : item))
+    );
+    setProductErrors((prev) =>
+      prev.map((rowError, rowIndex) =>
+        rowIndex === index ? { ...rowError, [field]: "" } : rowError
+      )
+    );
+  };
+
+  const addProductRow = () => {
+    setProducts((prev) => [...prev, createProductRow()]);
+    setProductErrors((prev) => [...prev, {}]);
+  };
+
+  const removeProductRow = (index) => {
+    if (products.length === 1) {
+      return;
+    }
+    setProducts((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
+    setProductErrors((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    const newErrors = {};
-
-    if (!formData.product.trim()) {
-      newErrors.product = "Describe el producto.";
-    }
-
-    const quantityValue = Number(formData.quantity);
-    if (!formData.quantity) {
-      newErrors.quantity = "Indica la cantidad.";
-    } else if (Number.isNaN(quantityValue) || quantityValue <= 0) {
-      newErrors.quantity = "La cantidad debe ser mayor a cero.";
-    }
-
-    const priceValue = Number(formData.price);
-    if (!formData.price) {
-      newErrors.price = "Indica el precio.";
-    } else if (Number.isNaN(priceValue) || priceValue <= 0) {
-      newErrors.price = "El precio debe ser mayor a cero.";
-    }
-
-    if (Object.keys(newErrors).length) {
-      setErrors(newErrors);
+    const { errors: rowErrors, hasErrors } = validateProductRows(products);
+    setProductErrors(rowErrors);
+    if (hasErrors) {
       return;
     }
 
@@ -1226,40 +1089,18 @@ const GenericInvoiceForm = ({ onBack, onSubmit }) => {
         </p>
       </header>
       <form className="invoice-form" onSubmit={handleSubmit} noValidate>
-        <div className="invoice-grid">
-          <InputField
-            type="text"
-            placeholder="Producto"
-            icon="shopping_bag"
-            value={formData.product}
-            onChange={handleChange}
-            name="product"
-            error={errors.product}
-            autoComplete="off"
-          />
-          <InputField
-            type="number"
-            placeholder="Cantidad"
-            icon="format_list_numbered"
-            value={formData.quantity}
-            onChange={handleChange}
-            name="quantity"
-            error={errors.quantity}
-            min="0"
-            step="1"
-            inputMode="numeric"
-          />
-          <InputField
-            type="number"
-            placeholder="Precio"
-            icon="attach_money"
-            value={formData.price}
-            onChange={handleChange}
-            name="price"
-            error={errors.price}
-            min="0"
-            step="0.01"
-            inputMode="decimal"
+        <div className="invoice-section">
+          <h3 className="invoice-section-title">Productos</h3>
+          <p className="invoice-section-subtitle">
+            Añade cada artículo de la venta con su cantidad y precio correspondiente.
+          </p>
+          <InvoiceProductsTable
+            products={products}
+            errors={productErrors}
+            includeTaxType={false}
+            onProductChange={handleProductChange}
+            onAddProduct={addProductRow}
+            onRemoveProduct={removeProductRow}
           />
         </div>
         <div className="form-actions">
@@ -1288,23 +1129,99 @@ const workflowViews = new Set([
   VIEWS.GENERIC_INVOICE,
 ]);
 
+const getSessionFromUrl = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const token = (searchParams.get("token") || "").trim();
+  if (!token) {
+    return null;
+  }
+
+  const email = searchParams.get("email") || "";
+  const firstName = searchParams.get("firstName") || "";
+  const lastName = searchParams.get("lastName") || "";
+  const name = formatUserName(firstName, lastName, email);
+
+  searchParams.delete("token");
+  searchParams.delete("email");
+  searchParams.delete("firstName");
+  searchParams.delete("lastName");
+  const cleanQuery = searchParams.toString();
+  const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+
+  if (isTokenExpired(token)) {
+    clearStoredSession();
+    return null;
+  }
+
+  persistSession({ token, email, firstName, lastName, name });
+
+  return { email, firstName, lastName, name };
+};
+
 const App = () => {
-  const [view, setView] = useState(VIEWS.LOGIN);
-  const [loginMessage, setLoginMessage] = useState("");
+  const [view, setView] = useState(VIEWS.HOME);
   const [dashboardFeedback, setDashboardFeedback] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Cargando...");
   const [currentUser, setCurrentUser] = useState(null);
-  const [passwordResetContext, setPasswordResetContext] = useState({
-    email: "",
-  });
+  const [sessionReady, setSessionReady] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
-  const goToLogin = (message = "") => {
-    setView(VIEWS.LOGIN);
-    setLoginMessage(typeof message === "string" ? message : "");
-    setCurrentUser(null);
-    setPasswordResetContext({ email: "" });
-  };
+  useEffect(() => {
+    const sessionFromUrl = getSessionFromUrl();
+    const token = getStoredSessionValue(SESSION_KEYS.TOKEN);
+    if (!token || isTokenExpired(token)) {
+      clearStoredSession();
+      window.location.replace(LOGIN_APP_URL);
+      return;
+    }
+
+    if (sessionFromUrl) {
+      setCurrentUser(sessionFromUrl);
+      setSessionReady(true);
+      return;
+    }
+
+    const email = getStoredSessionValue(SESSION_KEYS.EMAIL);
+    const firstName = getStoredSessionValue(SESSION_KEYS.FIRST_NAME);
+    const lastName = getStoredSessionValue(SESSION_KEYS.LAST_NAME);
+    const storedName = getStoredSessionValue(SESSION_KEYS.NAME);
+    const name = storedName || formatUserName(firstName, lastName, email);
+    setCurrentUser({ email, firstName, lastName, name });
+    setSessionReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mobileBreakpoint = window.matchMedia("(max-width: 960px)");
+    const applyViewportMode = (matches) => {
+      setIsMobileViewport(matches);
+      setIsSidebarCollapsed(matches);
+    };
+
+    applyViewportMode(mobileBreakpoint.matches);
+
+    const handleViewportChange = (event) => {
+      applyViewportMode(event.matches);
+    };
+
+    if (typeof mobileBreakpoint.addEventListener === "function") {
+      mobileBreakpoint.addEventListener("change", handleViewportChange);
+      return () => mobileBreakpoint.removeEventListener("change", handleViewportChange);
+    }
+
+    mobileBreakpoint.addListener(handleViewportChange);
+    return () => mobileBreakpoint.removeListener(handleViewportChange);
+  }, []);
 
   const transitionTo = (nextView, { message = "Cargando...", afterTransition } = {}) => {
     setLoadingMessage(message);
@@ -1321,62 +1238,9 @@ const App = () => {
     }, 650);
   };
 
-  const handleForgotPasswordNavigation = () => {
-    setPasswordResetContext((prev) => ({ email: prev.email }));
-    transitionTo(VIEWS.FORGOT_PASSWORD, {
-      message: "Preparando recuperación de acceso...",
-    });
-  };
-
-  const handleForgotPasswordSuccess = ({ email }) => {
-    setPasswordResetContext({ email });
-    transitionTo(VIEWS.RESET_PASSWORD, {
-      message: "Verificando tu identidad...",
-    });
-  };
-
-  const handleResetBack = () => {
-    transitionTo(VIEWS.FORGOT_PASSWORD, {
-      message: "Volviendo a solicitar ayuda...",
-      afterTransition: () => {
-        setPasswordResetContext((prev) => ({ email: prev.email }));
-      },
-    });
-  };
-
-  const handlePasswordResetComplete = () => {
-    const { email } = passwordResetContext;
-    transitionTo(VIEWS.LOGIN, {
-      message: "Actualizando tus credenciales...",
-      afterTransition: () => {
-        setPasswordResetContext({ email: "" });
-        setLoginMessage(
-          email
-            ? `Listo. Actualizamos la contraseña para ${email}. Inicia sesión con tu nueva clave.`
-            : "Tu contraseña se actualizó. Inicia sesión con tu nueva contraseña."
-        );
-      },
-    });
-  };
-
-  const handleLoginSuccess = ({ token, email, firstName, lastName }) => {
-    localStorage.setItem("token", token);
-    const name = formatUserName(firstName, lastName, email);
-    setCurrentUser({ email, name, firstName, lastName });
-    setLoginMessage("");
-    setDashboardFeedback("");
-    transitionTo(VIEWS.HOME, { message: "Preparando tu panel personalizado..." });
-  };
-
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    transitionTo(VIEWS.LOGIN, {
-      message: "Cerrando sesión...",
-      afterTransition: () => {
-        setLoginMessage("Sesión cerrada correctamente.");
-        setCurrentUser(null);
-      },
-    });
+    clearStoredSession();
+    window.location.replace(LOGIN_APP_URL);
   };
 
   const handleRegisterSale = () => {
@@ -1387,11 +1251,13 @@ const App = () => {
   };
 
   const handleViewSales = () => {
-    setDashboardFeedback("La sección de reportes estará disponible muy pronto.");
+    setDashboardFeedback("");
+    transitionTo(VIEWS.SALES, { message: "Analizando tus resultados más recientes..." });
   };
 
   const handleInventory = () => {
-    setDashboardFeedback("Estamos preparando un módulo de inventario increíble para ti.");
+    setDashboardFeedback("");
+    transitionTo(VIEWS.INVENTORY, { message: "Sincronizando niveles de inventario..." });
   };
 
   const goBackToHome = () => {
@@ -1428,15 +1294,23 @@ const App = () => {
   const handleMenuSelect = (targetView) => {
     if (workflowViews.has(view) && targetView === VIEWS.HOME) {
       goBackToHome();
+      if (isMobileViewport) {
+        setIsSidebarCollapsed(true);
+      }
       return;
     }
 
     if (targetView === view) {
+      if (isMobileViewport) {
+        setIsSidebarCollapsed(true);
+      }
       return;
     }
 
     const messages = {
       [VIEWS.HOME]: "Cargando tu panel principal...",
+      [VIEWS.SALES]: "Resumiendo tu histórico de ventas...",
+      [VIEWS.INVENTORY]: "Mapeando tu inventario en segundos...",
       [VIEWS.DASHBOARDS]: "Actualizando métricas en tiempo real...",
       [VIEWS.CLIENTS]: "Cargando clientes destacados...",
       [VIEWS.TRANSACTIONS]: "Obteniendo movimientos recientes...",
@@ -1449,13 +1323,11 @@ const App = () => {
     }
 
     transitionTo(targetView, { message: messages[targetView] });
+    if (isMobileViewport) {
+      setIsSidebarCollapsed(true);
+    }
   };
 
-  const isAuthenticated =
-    view !== VIEWS.LOGIN &&
-    view !== VIEWS.REGISTER &&
-    view !== VIEWS.FORGOT_PASSWORD &&
-    view !== VIEWS.RESET_PASSWORD;
   const activeNavView = workflowViews.has(view) ? VIEWS.HOME : view;
   const meta = VIEW_META[view] || VIEW_META[VIEWS.HOME];
 
@@ -1470,6 +1342,10 @@ const App = () => {
             feedback={dashboardFeedback}
           />
         );
+      case VIEWS.SALES:
+        return <SalesView />;
+      case VIEWS.INVENTORY:
+        return <InventoryView />;
       case VIEWS.DASHBOARDS:
         return <DashboardsView />;
       case VIEWS.CLIENTS:
@@ -1507,136 +1383,120 @@ const App = () => {
     }
   };
 
-  const renderUnauthenticated = () => {
-    const titles = {
-      [VIEWS.LOGIN]: "Iniciar sesión",
-      [VIEWS.REGISTER]: "Crea tu cuenta",
-      [VIEWS.FORGOT_PASSWORD]: "Recupera tu contraseña",
-      [VIEWS.RESET_PASSWORD]: "Restablece tu contraseña",
-    };
-
-    return (
-      <>
-        <div className="login-container">
-          <h2 className="form-title">{titles[view] || "Bienvenido"}</h2>
-          {view === VIEWS.LOGIN && (
-            <>
-              <SocialLogin />
-              <p className="separator">
-                <span>o</span>
-              </p>
-              {loginMessage && <p className="form-feedback success">{loginMessage}</p>}
-              <LoginForm
-                onRegisterLinkClick={() => {
-                  setView(VIEWS.REGISTER);
-                  setLoginMessage("");
-                }}
-                onForgotPassword={handleForgotPasswordNavigation}
-                onSuccess={handleLoginSuccess}
-              />
-            </>
-          )}
-          {view === VIEWS.REGISTER && <RegisterForm onLoginLinkClick={goToLogin} />}
-          {view === VIEWS.FORGOT_PASSWORD && (
-            <ForgotPasswordForm
-              onBack={() => goToLogin()}
-              onSuccess={handleForgotPasswordSuccess}
-              initialEmail={passwordResetContext.email}
-            />
-          )}
-          {view === VIEWS.RESET_PASSWORD && (
-            <ResetPasswordForm
-              onBack={handleResetBack}
-              onComplete={handlePasswordResetComplete}
-              email={passwordResetContext.email}
-            />
-          )}
-        </div>
-        <footer className="disclaimer-wrapper" aria-label="Aviso legal">
-          <p className="disclaimer">
-            Al ingresar aceptas nuestros
-            <a href="/terms" className="disclaimer-link">
-              {" "}
-              Términos de Servicio
-            </a>
-            {" "}
-            y confirmas que has leído la
-            <a href="/privacy" className="disclaimer-link">
-              {" "}
-              Política de Privacidad
-            </a>
-            . <span className="disclaimer-company">BilAI © 2025</span>
-          </p>
-        </footer>
-      </>
-    );
-  };
-
   const userInitial = getInitial(currentUser?.name, currentUser?.email);
+
+  if (!sessionReady) {
+    return <LoaderOverlay message="Validando sesión..." />;
+  }
 
   return (
     <>
-      {!isAuthenticated && (
-        <>
-          <header className="top-header">
-            <a href="/" className="header-brand">
-              <img src={logo} alt="BilAI" className="header-logo" />
-            </a>
-          </header>
-          <main className="page-wrapper">{renderUnauthenticated()}</main>
-        </>
-      )}
-
-      {isAuthenticated && (
-        <div className="app-shell">
-          <aside className="sidebar" aria-label="Menú principal">
-            <div className="sidebar-brand">
-              <img src={logonegativo} alt="BilAI" />
+      <div
+        className={`app-shell${isSidebarCollapsed ? " sidebar-collapsed" : ""}${
+          isMobileViewport ? " is-mobile-viewport" : ""
+        }`}
+      >
+        <aside className="sidebar" aria-label="Menú principal">
+          <div className="sidebar-brand">
+            <img src={isSidebarCollapsed ? logoicon : logo} alt="BilAI" />
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+              aria-label={
+                isMobileViewport
+                  ? isSidebarCollapsed
+                    ? "Abrir menú"
+                    : "Cerrar menú"
+                  : isSidebarCollapsed
+                    ? "Expandir menú"
+                    : "Minimizar menú"
+              }
+              title={
+                isMobileViewport
+                  ? isSidebarCollapsed
+                    ? "Abrir menú"
+                    : "Cerrar menú"
+                  : isSidebarCollapsed
+                    ? "Expandir menú"
+                    : "Minimizar menú"
+              }
+            >
+              <span className="material-symbols-rounded">
+                {isMobileViewport
+                  ? isSidebarCollapsed
+                    ? "menu"
+                    : "close"
+                  : isSidebarCollapsed
+                    ? "chevron_right"
+                    : "chevron_left"}
+              </span>
+            </button>
+          </div>
+          <nav className="sidebar-nav">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.view}
+                type="button"
+                className={`sidebar-link${activeNavView === item.view ? " is-active" : ""}`}
+                onClick={() => handleMenuSelect(item.view)}
+              >
+                <span className="material-symbols-rounded">{item.icon}</span>
+                <span className="sidebar-link-label">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-user">
+            <div className="user-avatar" aria-hidden="true">
+              {userInitial}
             </div>
-            <nav className="sidebar-nav">
-              {NAV_ITEMS.map((item) => (
-                <button
-                  key={item.view}
-                  type="button"
-                  className={`sidebar-link${activeNavView === item.view ? " is-active" : ""}`}
-                  onClick={() => handleMenuSelect(item.view)}
-                >
-                  <span className="material-symbols-rounded">{item.icon}</span>
-                  {item.label}
-                </button>
-              ))}
-            </nav>
-            <div className="sidebar-user">
-              <div className="user-avatar" aria-hidden="true">
-                {userInitial}
-              </div>
-              <div>
-                <strong>{currentUser?.name || "Usuario"}</strong>
-                <p>{currentUser?.email}</p>
-              </div>
+            <div className="sidebar-user-copy">
+              <strong>{currentUser?.name || "Usuario"}</strong>
+              <p>{currentUser?.email}</p>
             </div>
-          </aside>
-          <div className="app-shell-main">
-            <div className="app-shell-surface">
-              <header className="app-topbar">
+          </div>
+        </aside>
+        {isMobileViewport && !isSidebarCollapsed && (
+          <button
+            type="button"
+            className="sidebar-backdrop"
+            aria-label="Cerrar menú"
+            onClick={() => setIsSidebarCollapsed(true)}
+          />
+        )}
+        <div className="app-shell-main">
+          <div className="app-shell-surface">
+            <header className="app-topbar">
+              <div className="app-topbar-main">
+                {isMobileViewport && isSidebarCollapsed && (
+                  <button
+                    type="button"
+                    className="mobile-menu-trigger"
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    aria-label="Abrir menú"
+                    title="Abrir menú"
+                  >
+                    <span className="material-symbols-rounded">menu</span>
+                  </button>
+                )}
                 <div>
                   <h1>{meta.title}</h1>
                   <p>{meta.description}</p>
                 </div>
+              </div>
+              <div className="app-topbar-actions">
                 <button type="button" className="ghost-button" onClick={handleLogout}>
                   <span className="material-symbols-rounded">logout</span>
                   Cerrar sesión
                 </button>
-              </header>
-              <main
-                className={`app-content${workflowViews.has(view) ? " app-content--narrow" : ""}`}
-              >
-                {renderAuthenticatedContent()}
-              </main>
-            </div>
+              </div>
+            </header>
+            <main className={`app-content${workflowViews.has(view) ? " app-content--narrow" : ""}`}>
+              {renderAuthenticatedContent()}
+            </main>
           </div>
         </div>
-      )}
+      </div>
 
       {isLoading && <LoaderOverlay message={loadingMessage} />}
     </>
