@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import InputField from "./components/InputField";
 import logo from "/bilailogocompleto.png";
 import logoicon from "/bilailogo.svg";
 import { getRuntimeEnv } from "./runtimeConfig";
 
 const LOGIN_APP_URL = getRuntimeEnv("VITE_LOGIN_APP_URL", "/login");
+const API_URL = getRuntimeEnv("VITE_API_URL", "/api").replace(/\/+$/, "");
 const SESSION_KEYS = {
   TOKEN: "token",
   EMAIL: "user_email",
@@ -84,6 +85,138 @@ const VIEW_META = {
     title: "Inventario",
     description: "Visualiza existencias, rotación y alertas en un solo lugar.",
   },
+};
+
+const MONTH_LABELS = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
+
+const toNumber = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
+
+const formatCurrency = (value) =>
+  new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  }).format(toNumber(value));
+
+const formatInteger = (value) => new Intl.NumberFormat("es-CO").format(Math.round(toNumber(value)));
+
+const formatSignedPercent = (value) => {
+  const numeric = toNumber(value);
+  const sign = numeric > 0 ? "+" : "";
+  return `${sign}${numeric.toFixed(1)}%`;
+};
+
+const buildApiUrl = (path) => {
+  const baseOrigin =
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : "https://example.com";
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return new URL(`${API_URL}${normalizedPath}`, baseOrigin).toString();
+};
+
+const parseMetricsPayload = (payload) => {
+  const totalInvoices = toNumber(payload?.TotalInvoices);
+  const totalCreditNotes = toNumber(payload?.TotalCreditNotes);
+  const totalDebitNotes = toNumber(payload?.TotalDebitNotes);
+  const totalValueInvoices = toNumber(payload?.TotalValueInvoices);
+  const totalValueCreditNotes = toNumber(payload?.TotalValueCreditNotes);
+  const totalValueDebitNotes = toNumber(payload?.TotalValueDebitNotes);
+  const netSales = totalValueInvoices + totalValueDebitNotes - totalValueCreditNotes;
+  const totalDocuments = totalInvoices + totalCreditNotes + totalDebitNotes;
+  const averageTicket = totalInvoices > 0 ? totalValueInvoices / totalInvoices : 0;
+
+  return {
+    totalInvoices,
+    totalCreditNotes,
+    totalDebitNotes,
+    totalValueInvoices,
+    totalValueCreditNotes,
+    totalValueDebitNotes,
+    netSales,
+    totalDocuments,
+    averageTicket,
+  };
+};
+
+const buildMonthPeriod = (date) => ({
+  year: date.getFullYear(),
+  month: date.getMonth() + 1,
+});
+
+const getCurrentMonthPeriod = () => buildMonthPeriod(new Date());
+
+const getPreviousMonthPeriod = (period) => {
+  const monthIndex = period.month - 2;
+  const date = new Date(period.year, monthIndex, 1);
+  return buildMonthPeriod(date);
+};
+
+const getPeriodLabel = (period) => {
+  const monthLabel = MONTH_LABELS[(period.month ?? 1) - 1] || "mes";
+  return `${monthLabel} ${period.year}`;
+};
+
+const calculateTrend = (currentValue, previousValue) => {
+  const current = toNumber(currentValue);
+  const previous = toNumber(previousValue);
+  if (previous <= 0) {
+    return current > 0 ? 100 : 0;
+  }
+  return ((current - previous) / previous) * 100;
+};
+
+const buildSalesBreakdownRows = (metrics) => {
+  const rows = [
+    {
+      id: "invoices",
+      type: "Facturas",
+      count: metrics.totalInvoices,
+      value: metrics.totalValueInvoices,
+      status: metrics.totalInvoices > 0 ? "Activas" : "Sin registros",
+      statusClass: metrics.totalInvoices > 0 ? "status-pill--success" : "status-pill--info",
+    },
+    {
+      id: "credit-notes",
+      type: "Notas crédito",
+      count: metrics.totalCreditNotes,
+      value: metrics.totalValueCreditNotes,
+      status: metrics.totalCreditNotes > 0 ? "Aplicadas" : "Sin registros",
+      statusClass: metrics.totalCreditNotes > 0 ? "status-pill--warning" : "status-pill--info",
+    },
+    {
+      id: "debit-notes",
+      type: "Notas débito",
+      count: metrics.totalDebitNotes,
+      value: metrics.totalValueDebitNotes,
+      status: metrics.totalDebitNotes > 0 ? "Aplicadas" : "Sin registros",
+      statusClass: metrics.totalDebitNotes > 0 ? "status-pill--success" : "status-pill--info",
+    },
+  ];
+
+  return rows.map((row) => ({
+    ...row,
+    ratio:
+      metrics.netSales > 0
+        ? `${((toNumber(row.value) / metrics.netSales) * 100).toFixed(1)}%`
+        : "0.0%",
+  }));
 };
 
 const capitalizeName = (value) => {
@@ -351,99 +484,96 @@ const InvoiceProductsTable = ({
   </div>
 );
 
-const HomeView = ({ onRegisterSale, onViewSales, onInventory, feedback }) => (
-  <section className="home-view" aria-labelledby="home-heading">
-    <div className="home-hero">
-      <div className="home-hero-text">
-        <p className="section-kicker">Tu operación al día</p>
-        <h2 id="home-heading">Impulsa tus ventas con BilAI</h2>
-        <p>
-          Automatiza tus procesos comerciales, mantén visibilidad absoluta de tus números
-          y toma decisiones con confianza.
-        </p>
-        <div className="home-hero-actions">
-          <button type="button" className="primary-button" onClick={onRegisterSale}>
-            <span className="material-symbols-rounded">point_of_sale</span>
-            Registrar venta
-          </button>
-          <button type="button" className="ghost-button" onClick={onViewSales}>
-            <span className="material-symbols-rounded">insights</span>
-            Ver ventas
-          </button>
-        </div>
-      </div>
-      <div className="home-hero-card">
-        <p>Resumen de hoy</p>
-        <h3>$18,250</h3>
-        <span>+12% vs ayer</span>
-        <div className="trend-chip">
-          <span className="material-symbols-rounded">trending_up</span>
-          Crecimiento saludable
-        </div>
-      </div>
-    </div>
-    <div className="home-grid">
-      <button type="button" className="home-tile" onClick={onRegisterSale}>
-        <span className="material-symbols-rounded home-tile-icon">rocket_launch</span>
-        <div>
-          <h3>Registrar Venta</h3>
-          <p>Captura cada oportunidad y sincroniza tus inventarios al instante.</p>
-        </div>
-      </button>
-      <button type="button" className="home-tile" onClick={onViewSales}>
-        <span className="material-symbols-rounded home-tile-icon">query_stats</span>
-        <div>
-          <h3>Ver ventas</h3>
-          <p>Analiza tendencias, compara periodos y detecta productos estrella.</p>
-        </div>
-      </button>
-      <button type="button" className="home-tile" onClick={onInventory}>
-        <span className="material-symbols-rounded home-tile-icon">inventory_2</span>
-        <div>
-          <h3>Inventario</h3>
-          <p>Controla existencias críticas y recibe alertas antes de que falte stock.</p>
-        </div>
-      </button>
-    </div>
-    {feedback && <p className="home-feedback">{feedback}</p>}
-  </section>
-);
+const HomeView = ({
+  onRegisterSale,
+  onViewSales,
+  onInventory,
+  feedback,
+  metrics,
+  metricsPrevious,
+  metricsPeriod,
+  metricsLoading,
+  metricsError,
+  onRefreshMetrics,
+}) => {
+  const trend = calculateTrend(metrics?.netSales, metricsPrevious?.netSales);
+  const trendLabel =
+    toNumber(metricsPrevious?.netSales) > 0
+      ? `${formatSignedPercent(trend)} vs mes anterior`
+      : "Sin periodo comparativo";
+  const trendCopy = trend >= 0 ? "Crecimiento saludable" : "Caída frente al mes anterior";
 
-const SalesView = () => {
-  const sales = [
-    {
-      id: "FE-3482",
-      client: "Innovar S.A.",
-      channel: "Factura electrónica",
-      total: "$4,850",
-      status: "Pagada",
-      statusClass: "status-pill--success",
-    },
-    {
-      id: "FG-1294",
-      client: "Retail Nova",
-      channel: "Factura genérica",
-      total: "$1,920",
-      status: "Pendiente",
-      statusClass: "status-pill--warning",
-    },
-    {
-      id: "FE-3478",
-      client: "Bazar 24",
-      channel: "Factura electrónica",
-      total: "$3,410",
-      status: "Pagada",
-      statusClass: "status-pill--success",
-    },
-    {
-      id: "FG-1289",
-      client: "LogiMax",
-      channel: "Factura genérica",
-      total: "$760",
-      status: "Revisar",
-      statusClass: "status-pill--info",
-    },
-  ];
+  return (
+    <section className="home-view" aria-labelledby="home-heading">
+      <div className="home-hero">
+        <div className="home-hero-text">
+          <p className="section-kicker">Tu operación al día</p>
+          <h2 id="home-heading">Impulsa tus ventas con BilAI</h2>
+          <p>
+            Automatiza tus procesos comerciales, mantén visibilidad absoluta de tus números
+            y toma decisiones con confianza.
+          </p>
+          <div className="home-hero-actions">
+            <button type="button" className="primary-button" onClick={onRegisterSale}>
+              <span className="material-symbols-rounded">point_of_sale</span>
+              Registrar venta
+            </button>
+            <button type="button" className="ghost-button" onClick={onViewSales}>
+              <span className="material-symbols-rounded">insights</span>
+              Ver ventas
+            </button>
+          </div>
+        </div>
+        <div className="home-hero-card">
+          <p>Resumen de {getPeriodLabel(metricsPeriod)}</p>
+          <h3>{formatCurrency(metrics?.netSales)}</h3>
+          <span>{trendLabel}</span>
+          <div className="trend-chip">
+            <span className="material-symbols-rounded">
+              {trend >= 0 ? "trending_up" : "trending_down"}
+            </span>
+            {trendCopy}
+          </div>
+          <button type="button" className="link-button" onClick={onRefreshMetrics} disabled={metricsLoading}>
+            {metricsLoading ? "Actualizando..." : "Actualizar métricas"}
+          </button>
+        </div>
+      </div>
+      <div className="home-grid">
+        <button type="button" className="home-tile" onClick={onRegisterSale}>
+          <span className="material-symbols-rounded home-tile-icon">rocket_launch</span>
+          <div>
+            <h3>Registrar Venta</h3>
+            <p>Captura cada oportunidad y sincroniza tus inventarios al instante.</p>
+          </div>
+        </button>
+        <button type="button" className="home-tile" onClick={onViewSales}>
+          <span className="material-symbols-rounded home-tile-icon">query_stats</span>
+          <div>
+            <h3>Ver ventas</h3>
+            <p>Analiza tendencias, compara periodos y detecta productos estrella.</p>
+          </div>
+        </button>
+        <button type="button" className="home-tile" onClick={onInventory}>
+          <span className="material-symbols-rounded home-tile-icon">inventory_2</span>
+          <div>
+            <h3>Inventario</h3>
+            <p>Controla existencias críticas y recibe alertas antes de que falte stock.</p>
+          </div>
+        </button>
+      </div>
+      {feedback && <p className="home-feedback">{feedback}</p>}
+      {metricsError && <p className="home-feedback">{metricsError}</p>}
+    </section>
+  );
+};
+
+const SalesView = ({ metrics, metricsPrevious, metricsPeriod, metricsLoading, metricsError, onRefreshMetrics }) => {
+  const trend = calculateTrend(metrics?.netSales, metricsPrevious?.netSales);
+  const invoicesTrend = calculateTrend(metrics?.totalInvoices, metricsPrevious?.totalInvoices);
+  const rows = buildSalesBreakdownRows(metrics);
+  const trendClass = trend >= 0 ? "status-pill--success" : "status-pill--danger";
+  const invoicesTrendClass = invoicesTrend >= 0 ? "status-pill--info" : "status-pill--warning";
 
   return (
     <section className="sales-view" aria-labelledby="sales-heading">
@@ -451,62 +581,67 @@ const SalesView = () => {
         <div>
           <p className="section-kicker">Rendimiento comercial</p>
           <h2 id="sales-heading">Ventas con contexto de negocio</h2>
-          <p>Analiza resultados diarios, ticket promedio y estado de tus ventas recientes.</p>
+          <p>Analiza resultados reales de facturación y notas para {getPeriodLabel(metricsPeriod)}.</p>
         </div>
         <div className="view-header-actions">
           <button type="button" className="ghost-button">
             <span className="material-symbols-rounded">calendar_today</span>
-            Últimos 30 días
+            {getPeriodLabel(metricsPeriod)}
           </button>
-          <button type="button" className="primary-button">
-            <span className="material-symbols-rounded">file_download</span>
-            Exportar
+          <button type="button" className="primary-button" onClick={onRefreshMetrics} disabled={metricsLoading}>
+            <span className="material-symbols-rounded">sync</span>
+            {metricsLoading ? "Actualizando..." : "Actualizar"}
           </button>
         </div>
       </div>
 
       <div className="performance-grid">
         <article className="performance-card">
-          <p>Ventas del día</p>
-          <h3>$18,250</h3>
-          <span className="status-pill status-pill--success">+12% vs ayer</span>
+          <p>Ventas netas del periodo</p>
+          <h3>{formatCurrency(metrics?.netSales)}</h3>
+          <span className={`status-pill ${trendClass}`}>{formatSignedPercent(trend)} vs mes anterior</span>
         </article>
         <article className="performance-card">
           <p>Ticket promedio</p>
-          <h3>$312</h3>
-          <span className="status-pill status-pill--info">+4.6% semanal</span>
+          <h3>{formatCurrency(metrics?.averageTicket)}</h3>
+          <span className="status-pill status-pill--info">
+            {formatInteger(metrics?.totalInvoices)} facturas emitidas
+          </span>
         </article>
         <article className="performance-card">
-          <p>Ventas facturadas</p>
-          <h3>94</h3>
-          <span className="status-pill status-pill--warning">8 en seguimiento</span>
+          <p>Documentos procesados</p>
+          <h3>{formatInteger(metrics?.totalDocuments)}</h3>
+          <span className={`status-pill ${invoicesTrendClass}`}>
+            {formatSignedPercent(invoicesTrend)} variación en facturas
+          </span>
         </article>
       </div>
 
       <div className="panel-table panel-table--sales">
         <div className="panel-table-head panel-table-head--sales">
-          <span>Factura</span>
-          <span>Cliente</span>
-          <span>Canal</span>
-          <span>Total</span>
+          <span>Tipo</span>
+          <span>Cantidad</span>
+          <span>Valor</span>
+          <span>Participación</span>
           <span>Estado</span>
         </div>
-        {sales.map((sale) => (
-          <div className="panel-table-row panel-table-row--sales" key={sale.id}>
-            <span className="panel-strong" data-label="Factura">
-              {sale.id}
+        {rows.map((row) => (
+          <div className="panel-table-row panel-table-row--sales" key={row.id}>
+            <span className="panel-strong" data-label="Tipo">
+              {row.type}
             </span>
-            <span data-label="Cliente">{sale.client}</span>
-            <span data-label="Canal">{sale.channel}</span>
-            <span className="panel-strong" data-label="Total">
-              {sale.total}
+            <span data-label="Cantidad">{formatInteger(row.count)}</span>
+            <span className="panel-strong" data-label="Valor">
+              {formatCurrency(row.value)}
             </span>
-            <span className={`status-pill panel-status-cell ${sale.statusClass}`} data-label="Estado">
-              {sale.status}
+            <span data-label="Participación">{row.ratio}</span>
+            <span className={`status-pill panel-status-cell ${row.statusClass}`} data-label="Estado">
+              {row.status}
             </span>
           </div>
         ))}
       </div>
+      {metricsError && <p className="home-feedback">{metricsError}</p>}
     </section>
   );
 };
@@ -619,47 +754,64 @@ const InventoryView = () => {
   );
 };
 
-const DashboardsView = () => (
-  <section className="dashboards-view" aria-labelledby="dashboards-heading">
-    <div className="view-header">
-      <div>
-        <p className="section-kicker">Visión ejecutiva</p>
-        <h2 id="dashboards-heading">Métricas que cuentan la historia completa</h2>
-        <p>Monitorea tus ingresos, márgenes y conversiones en un solo lugar.</p>
+const DashboardsView = ({
+  metrics,
+  metricsPrevious,
+  metricsPeriod,
+  metricsLoading,
+  metricsError,
+  onRefreshMetrics,
+}) => {
+  const netTrend = calculateTrend(metrics?.netSales, metricsPrevious?.netSales);
+  const invoiceTrend = calculateTrend(metrics?.totalInvoices, metricsPrevious?.totalInvoices);
+  const adjustmentValue = toNumber(metrics?.totalValueDebitNotes) - toNumber(metrics?.totalValueCreditNotes);
+
+  return (
+    <section className="dashboards-view" aria-labelledby="dashboards-heading">
+      <div className="view-header">
+        <div>
+          <p className="section-kicker">Visión ejecutiva</p>
+          <h2 id="dashboards-heading">Métricas que cuentan la historia completa</h2>
+          <p>Monitorea tus ingresos reales y el balance documental de {getPeriodLabel(metricsPeriod)}.</p>
+        </div>
+        <button type="button" className="ghost-button" onClick={onRefreshMetrics} disabled={metricsLoading}>
+          <span className="material-symbols-rounded">sync</span>
+          {metricsLoading ? "Actualizando..." : "Actualizar"}
+        </button>
       </div>
-      <button type="button" className="ghost-button">
-        <span className="material-symbols-rounded">download</span>
-        Exportar reporte
-      </button>
-    </div>
-    <div className="metrics-grid">
-      <article className="metric-card">
-        <span className="metric-label">Ingresos del mes</span>
-        <h3>$126,450</h3>
-        <p>+18% vs. mes anterior</p>
-      </article>
-      <article className="metric-card">
-        <span className="metric-label">Margen bruto</span>
-        <h3>42%</h3>
-        <p>Optimizado gracias a tus renegociaciones</p>
-      </article>
-      <article className="metric-card">
-        <span className="metric-label">Clientes activos</span>
-        <h3>318</h3>
-        <p>+26 nuevos esta semana</p>
-      </article>
-    </div>
-    <div className="chart-card">
-      <div className="chart-header">
-        <h3>Proyección semanal</h3>
-        <span className="chart-chip">Actualizado hace 5 min</span>
+      <div className="metrics-grid">
+        <article className="metric-card">
+          <span className="metric-label">Ingresos netos del mes</span>
+          <h3>{formatCurrency(metrics?.netSales)}</h3>
+          <p>{formatSignedPercent(netTrend)} frente al mes anterior</p>
+        </article>
+        <article className="metric-card">
+          <span className="metric-label">Facturas emitidas</span>
+          <h3>{formatInteger(metrics?.totalInvoices)}</h3>
+          <p>{formatSignedPercent(invoiceTrend)} variación mensual</p>
+        </article>
+        <article className="metric-card">
+          <span className="metric-label">Balance de ajustes</span>
+          <h3>{formatCurrency(adjustmentValue)}</h3>
+          <p>Notas débito menos notas crédito</p>
+        </article>
       </div>
-      <div className="chart-placeholder">
-        <span className="material-symbols-rounded">area_chart</span>
+      <div className="chart-card">
+        <div className="chart-header">
+          <h3>Desglose documental</h3>
+          <span className="chart-chip">Periodo: {getPeriodLabel(metricsPeriod)}</span>
+        </div>
+        <div className="chart-placeholder">
+          <span className="material-symbols-rounded">area_chart</span>
+          <p>Facturas: {formatInteger(metrics?.totalInvoices)}</p>
+          <p>Notas crédito: {formatInteger(metrics?.totalCreditNotes)}</p>
+          <p>Notas débito: {formatInteger(metrics?.totalDebitNotes)}</p>
+        </div>
       </div>
-    </div>
-  </section>
-);
+      {metricsError && <p className="home-feedback">{metricsError}</p>}
+    </section>
+  );
+};
 
 const ClientsView = () => (
   <section className="clients-view" aria-labelledby="clients-heading">
@@ -1172,6 +1324,11 @@ const App = () => {
   const [sessionReady, setSessionReady] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [metrics, setMetrics] = useState(() => parseMetricsPayload({}));
+  const [previousMetrics, setPreviousMetrics] = useState(() => parseMetricsPayload({}));
+  const [metricsPeriod, setMetricsPeriod] = useState(getCurrentMonthPeriod());
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsError, setMetricsError] = useState("");
 
   useEffect(() => {
     const sessionFromUrl = getSessionFromUrl();
@@ -1222,6 +1379,91 @@ const App = () => {
     mobileBreakpoint.addListener(handleViewportChange);
     return () => mobileBreakpoint.removeListener(handleViewportChange);
   }, []);
+
+  const loadMetrics = useCallback(async () => {
+    const token = getStoredSessionValue(SESSION_KEYS.TOKEN);
+    if (!token || isTokenExpired(token)) {
+      return;
+    }
+
+    const fetchPeriodMetrics = async (period) => {
+      const response = await fetch(buildApiUrl("/metrics"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          Year: String(period.year),
+          Month: String(period.month).padStart(2, "0"),
+        }),
+      });
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const detail =
+          payload && typeof payload.detail === "string"
+            ? payload.detail
+            : "No fue posible consultar las métricas reales.";
+        throw new Error(detail);
+      }
+
+      if (!payload || typeof payload !== "object") {
+        throw new Error("La respuesta de métricas llegó en un formato inválido.");
+      }
+
+      return {
+        year: Number(payload.year) || period.year,
+        month: Number(payload.month) || period.month,
+        metrics: parseMetricsPayload(payload.metrics),
+      };
+    };
+
+    const currentPeriod = getCurrentMonthPeriod();
+    const previousPeriod = getPreviousMonthPeriod(currentPeriod);
+
+    setMetricsLoading(true);
+    setMetricsError("");
+    try {
+      const [currentResponse, previousResponse] = await Promise.all([
+        fetchPeriodMetrics(currentPeriod),
+        fetchPeriodMetrics(previousPeriod),
+      ]);
+      setMetrics(currentResponse.metrics);
+      setPreviousMetrics(previousResponse.metrics);
+      setMetricsPeriod({
+        year: currentResponse.year,
+        month: currentResponse.month,
+      });
+    } catch (error) {
+      setMetricsError(error instanceof Error ? error.message : "No fue posible cargar métricas.");
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionReady) {
+      return undefined;
+    }
+
+    loadMetrics();
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      loadMetrics();
+    }, 180000);
+
+    return () => window.clearInterval(intervalId);
+  }, [sessionReady, loadMetrics]);
 
   const transitionTo = (nextView, { message = "Cargando...", afterTransition } = {}) => {
     setLoadingMessage(message);
@@ -1340,14 +1582,38 @@ const App = () => {
             onViewSales={handleViewSales}
             onInventory={handleInventory}
             feedback={dashboardFeedback}
+            metrics={metrics}
+            metricsPrevious={previousMetrics}
+            metricsPeriod={metricsPeriod}
+            metricsLoading={metricsLoading}
+            metricsError={metricsError}
+            onRefreshMetrics={loadMetrics}
           />
         );
       case VIEWS.SALES:
-        return <SalesView />;
+        return (
+          <SalesView
+            metrics={metrics}
+            metricsPrevious={previousMetrics}
+            metricsPeriod={metricsPeriod}
+            metricsLoading={metricsLoading}
+            metricsError={metricsError}
+            onRefreshMetrics={loadMetrics}
+          />
+        );
       case VIEWS.INVENTORY:
         return <InventoryView />;
       case VIEWS.DASHBOARDS:
-        return <DashboardsView />;
+        return (
+          <DashboardsView
+            metrics={metrics}
+            metricsPrevious={previousMetrics}
+            metricsPeriod={metricsPeriod}
+            metricsLoading={metricsLoading}
+            metricsError={metricsError}
+            onRefreshMetrics={loadMetrics}
+          />
+        );
       case VIEWS.CLIENTS:
         return <ClientsView />;
       case VIEWS.TRANSACTIONS:
