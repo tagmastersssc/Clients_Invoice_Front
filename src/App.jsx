@@ -131,6 +131,59 @@ const buildApiUrl = (path) => {
   return new URL(`${API_URL}${normalizedPath}`, baseOrigin).toString();
 };
 
+const getSessionToken = () => getStoredSessionValue(SESSION_KEYS.TOKEN);
+
+const requestPortalApi = async (path, { method = "GET", query = {}, body } = {}) => {
+  const token = getSessionToken();
+  if (!token || isTokenExpired(token)) {
+    throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+  }
+
+  const url = new URL(buildApiUrl(path));
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
+
+  const headers = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(url.toString(), {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const rawText = await response.text();
+  let payload = null;
+
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch {
+      payload = { raw: rawText };
+    }
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload.detail === "string"
+        ? payload.detail
+        : payload && typeof payload.raw === "string"
+          ? payload.raw
+          : "No fue posible completar la operación.";
+    throw new Error(detail);
+  }
+
+  return payload;
+};
+
 const parseMetricsPayload = (payload) => {
   const totalInvoices = toNumber(payload?.TotalInvoices);
   const totalCreditNotes = toNumber(payload?.TotalCreditNotes);
@@ -218,6 +271,15 @@ const buildSalesBreakdownRows = (metrics) => {
         : "0.0%",
   }));
 };
+
+
+const normalizeInvoiceItems = (products, { includeTaxType }) =>
+  products.map((item) => ({
+    product: item.product.trim(),
+    quantity: Number(item.quantity),
+    price: Number(item.price),
+    ...(includeTaxType ? { tax_type_id: item.taxType || null } : {}),
+  }));
 
 const capitalizeName = (value) => {
   if (!value) return "";
@@ -1035,11 +1097,13 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
   const [products, setProducts] = useState([createProductRow()]);
   const [productErrors, setProductErrors] = useState([{}]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const handleChange = (event) => {
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     setErrors((prev) => ({ ...prev, [name]: "" }));
+    setSubmitError("");
   };
 
   const handleProductChange = (index, field, value) => {
@@ -1051,6 +1115,7 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
         rowIndex === index ? { ...rowError, [field]: "" } : rowError
       )
     );
+    setSubmitError("");
   };
 
   const addProductRow = () => {
@@ -1066,7 +1131,7 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
     setProductErrors((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const newErrors = {};
 
@@ -1097,10 +1162,21 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      onSubmit();
+    setSubmitError("");
+
+    try {
+      await onSubmit({
+        send_to_dian: true,
+        customer_name: formData.customerName.trim(),
+        customer_tax_id: formData.taxId.trim(),
+        customer_email: formData.customerEmail.trim(),
+        items: normalizeInvoiceItems(products, { includeTaxType: true }),
+      });
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "No fue posible registrar la factura.");
+    } finally {
       setIsSubmitting(false);
-    }, 550);
+    }
   };
 
   return (
@@ -1176,6 +1252,7 @@ const ElectronicInvoiceForm = ({ onBack, onSubmit }) => {
             {isSubmitting ? "Registrando..." : "Registrar"}
           </button>
         </div>
+        {submitError && <p className="home-feedback">{submitError}</p>}
       </form>
     </section>
   );
@@ -1185,6 +1262,7 @@ const GenericInvoiceForm = ({ onBack, onSubmit }) => {
   const [products, setProducts] = useState([createProductRow()]);
   const [productErrors, setProductErrors] = useState([{}]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const handleProductChange = (index, field, value) => {
     setProducts((prev) =>
@@ -1195,6 +1273,7 @@ const GenericInvoiceForm = ({ onBack, onSubmit }) => {
         rowIndex === index ? { ...rowError, [field]: "" } : rowError
       )
     );
+    setSubmitError("");
   };
 
   const addProductRow = () => {
@@ -1210,7 +1289,7 @@ const GenericInvoiceForm = ({ onBack, onSubmit }) => {
     setProductErrors((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const { errors: rowErrors, hasErrors } = validateProductRows(products);
     setProductErrors(rowErrors);
@@ -1219,10 +1298,18 @@ const GenericInvoiceForm = ({ onBack, onSubmit }) => {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      onSubmit();
+    setSubmitError("");
+
+    try {
+      await onSubmit({
+        send_to_dian: false,
+        items: normalizeInvoiceItems(products, { includeTaxType: false }),
+      });
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "No fue posible registrar la factura.");
+    } finally {
       setIsSubmitting(false);
-    }, 550);
+    }
   };
 
   return (
@@ -1263,6 +1350,7 @@ const GenericInvoiceForm = ({ onBack, onSubmit }) => {
             {isSubmitting ? "Registrando..." : "Registrar"}
           </button>
         </div>
+        {submitError && <p className="home-feedback">{submitError}</p>}
       </form>
     </section>
   );
@@ -1381,38 +1469,18 @@ const App = () => {
   }, []);
 
   const loadMetrics = useCallback(async () => {
-    const token = getStoredSessionValue(SESSION_KEYS.TOKEN);
-    if (!token || isTokenExpired(token)) {
+    if (!getSessionToken() || isTokenExpired(getSessionToken())) {
       return;
     }
 
     const fetchPeriodMetrics = async (period) => {
-      const response = await fetch(buildApiUrl("/metrics"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const payload = await requestPortalApi("/metrics", {
+        method: "GET",
+        query: {
+          year: String(period.year),
+          month: String(period.month).padStart(2, "0"),
         },
-        body: JSON.stringify({
-          Year: String(period.year),
-          Month: String(period.month).padStart(2, "0"),
-        }),
       });
-
-      let payload;
-      try {
-        payload = await response.json();
-      } catch {
-        payload = null;
-      }
-
-      if (!response.ok) {
-        const detail =
-          payload && typeof payload.detail === "string"
-            ? payload.detail
-            : "No fue posible consultar las métricas reales.";
-        throw new Error(detail);
-      }
 
       if (!payload || typeof payload !== "object") {
         throw new Error("La respuesta de métricas llegó en un formato inválido.");
@@ -1524,11 +1592,30 @@ const App = () => {
     });
   };
 
-  const submitInvoiceAndReturn = (successMessage) => {
+  const submitInvoiceAndReturn = async (payload, successMessage) => {
+    const response = await requestPortalApi("/invoices", {
+      method: "POST",
+      body: payload,
+    });
+
+    let contextualMessage = successMessage;
+    if (response && typeof response === "object") {
+      const reference =
+        response.invoice_number ||
+        response.invoiceNumber ||
+        response.document_number ||
+        response.documentNumber ||
+        response.number;
+      if (typeof reference === "string" && reference.trim()) {
+        contextualMessage = `${successMessage} Referencia: ${reference.trim()}.`;
+      }
+    }
+
     transitionTo(VIEWS.HOME, {
       message: "Guardando tu información...",
       afterTransition: () => {
-        setDashboardFeedback(successMessage);
+        setDashboardFeedback(contextualMessage);
+        loadMetrics();
       },
     });
   };
@@ -1634,14 +1721,18 @@ const App = () => {
         return (
           <ElectronicInvoiceForm
             onBack={goBackToRegisterSale}
-            onSubmit={() => submitInvoiceAndReturn("Factura electrónica registrada con éxito.")}
+            onSubmit={(payload) =>
+              submitInvoiceAndReturn(payload, "Factura electrónica registrada con éxito.")
+            }
           />
         );
       case VIEWS.GENERIC_INVOICE:
         return (
           <GenericInvoiceForm
             onBack={goBackToRegisterSale}
-            onSubmit={() => submitInvoiceAndReturn("Factura genérica registrada correctamente.")}
+            onSubmit={(payload) =>
+              submitInvoiceAndReturn(payload, "Factura genérica registrada correctamente.")
+            }
           />
         );
       default:
