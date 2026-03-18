@@ -39,6 +39,7 @@ jobs:
         with:
           inlineScript: |
             echo VITE_LOGIN_APP_URL=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-LOGIN-APP-URL --query value -o tsv) >> $GITHUB_ENV
+            echo VITE_API_URL=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-API-URL --query value -o tsv) >> $GITHUB_ENV
 
       - name: Build And Deploy
         id: builddeploy
@@ -51,3 +52,4 @@ jobs:
           app_artifact_location: ${{ env.APP_ARTIFACT_LOCATION }}
         env:
           VITE_LOGIN_APP_URL: ${{ env.VITE_LOGIN_APP_URL }}
+          VITE_API_URL: ${{ env.VITE_API_URL }}
