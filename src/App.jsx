@@ -6,14 +6,7 @@ import { getRuntimeEnv } from "./runtimeConfig";
 
 const LOGIN_APP_URL = getRuntimeEnv("VITE_LOGIN_APP_URL", "/login");
 const API_URL = getRuntimeEnv("VITE_API_URL", "/api").replace(/\/+$/, "");
-const SESSION_KEYS = {
-  TOKEN: "token",
-  EMAIL: "user_email",
-  FIRST_NAME: "user_first_name",
-  LAST_NAME: "user_last_name",
-  NAME: "user_name",
-};
-const SESSION_KEY_LIST = Object.values(SESSION_KEYS);
+const LEGACY_SESSION_KEYS = ["token", "user_email", "user_first_name", "user_last_name", "user_name"];
 
 const VIEWS = {
   HOME: "home",
@@ -131,14 +124,7 @@ const buildApiUrl = (path) => {
   return new URL(`${API_URL}${normalizedPath}`, baseOrigin).toString();
 };
 
-const getSessionToken = () => getStoredSessionValue(SESSION_KEYS.TOKEN);
-
 const requestPortalApi = async (path, { method = "GET", query = {}, body } = {}) => {
-  const token = getSessionToken();
-  if (!token || isTokenExpired(token)) {
-    throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
-  }
-
   const url = new URL(buildApiUrl(path));
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
@@ -146,9 +132,7 @@ const requestPortalApi = async (path, { method = "GET", query = {}, body } = {})
     }
   });
 
-  const headers = {
-    Authorization: `Bearer ${token}`,
-  };
+  const headers = {};
 
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -157,6 +141,7 @@ const requestPortalApi = async (path, { method = "GET", query = {}, body } = {})
   const response = await fetch(url.toString(), {
     method,
     headers,
+    credentials: "include",
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
@@ -172,6 +157,10 @@ const requestPortalApi = async (path, { method = "GET", query = {}, body } = {})
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("Tu sesión expiró. Inicia sesión nuevamente.");
+    }
+
     const detail =
       payload && typeof payload.detail === "string"
         ? payload.detail
@@ -319,72 +308,64 @@ const getInitial = (name, fallback) => {
   return "U";
 };
 
-const persistSession = ({ token, email, firstName, lastName, name }) => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.sessionStorage.setItem(SESSION_KEYS.TOKEN, token);
-  window.sessionStorage.setItem(SESSION_KEYS.EMAIL, email);
-  window.sessionStorage.setItem(SESSION_KEYS.FIRST_NAME, firstName);
-  window.sessionStorage.setItem(SESSION_KEYS.LAST_NAME, lastName);
-  window.sessionStorage.setItem(SESSION_KEYS.NAME, name);
-
-  // Legacy cleanup: avoid reusing stale persistent tokens.
-  SESSION_KEY_LIST.forEach((key) => {
-    window.localStorage.removeItem(key);
-  });
-};
-
 const clearStoredSession = () => {
   if (typeof window === "undefined") {
     return;
   }
 
-  SESSION_KEY_LIST.forEach((key) => {
+  LEGACY_SESSION_KEYS.forEach((key) => {
     window.sessionStorage.removeItem(key);
     window.localStorage.removeItem(key);
   });
 };
 
-const getStoredSessionValue = (key) => {
+const stripLegacySessionParams = () => {
   if (typeof window === "undefined") {
-    return "";
+    return;
   }
-  return window.sessionStorage.getItem(key) || "";
+
+  const searchParams = new URLSearchParams(window.location.search);
+  let hasLegacyParams = false;
+  ["token", "email", "firstName", "lastName"].forEach((key) => {
+    if (searchParams.has(key)) {
+      searchParams.delete(key);
+      hasLegacyParams = true;
+    }
+  });
+
+  if (!hasLegacyParams) {
+    return;
+  }
+
+  const cleanQuery = searchParams.toString();
+  const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`;
+  window.history.replaceState({}, document.title, cleanUrl);
 };
 
-const parseJwtPayload = (token) => {
-  if (typeof token !== "string") {
+const normalizeSessionUser = (payload) => {
+  const user =
+    payload && typeof payload.user === "object" && payload.user !== null ? payload.user : payload;
+
+  if (!user || typeof user !== "object") {
     return null;
   }
 
-  const parts = token.split(".");
-  if (parts.length !== 3) {
+  const email = typeof user.email === "string" ? user.email.trim() : "";
+  if (!email) {
     return null;
   }
 
-  try {
-    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    const decoded = atob(padded);
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
-};
+  const firstName = typeof user.firstName === "string" ? user.firstName.trim() : "";
+  const lastName = typeof user.lastName === "string" ? user.lastName.trim() : "";
+  const providedName = typeof user.name === "string" ? user.name.trim() : "";
 
-const isTokenExpired = (token) => {
-  if (!token) {
-    return true;
-  }
-
-  const payload = parseJwtPayload(token);
-  if (!payload || typeof payload.exp !== "number") {
-    return false;
-  }
-
-  return Date.now() >= payload.exp * 1000;
+  return {
+    email,
+    firstName,
+    lastName,
+    name: providedName || formatUserName(firstName, lastName, email),
+    provider: typeof user.provider === "string" ? user.provider.trim() : "",
+  };
 };
 
 const generateRowId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
@@ -1369,40 +1350,6 @@ const workflowViews = new Set([
   VIEWS.GENERIC_INVOICE,
 ]);
 
-const getSessionFromUrl = () => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const token = (searchParams.get("token") || "").trim();
-  if (!token) {
-    return null;
-  }
-
-  const email = searchParams.get("email") || "";
-  const firstName = searchParams.get("firstName") || "";
-  const lastName = searchParams.get("lastName") || "";
-  const name = formatUserName(firstName, lastName, email);
-
-  searchParams.delete("token");
-  searchParams.delete("email");
-  searchParams.delete("firstName");
-  searchParams.delete("lastName");
-  const cleanQuery = searchParams.toString();
-  const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}${window.location.hash}`;
-  window.history.replaceState({}, document.title, cleanUrl);
-
-  if (isTokenExpired(token)) {
-    clearStoredSession();
-    return null;
-  }
-
-  persistSession({ token, email, firstName, lastName, name });
-
-  return { email, firstName, lastName, name };
-};
-
 const App = () => {
   const [view, setView] = useState(VIEWS.HOME);
   const [dashboardFeedback, setDashboardFeedback] = useState("");
@@ -1419,27 +1366,36 @@ const App = () => {
   const [metricsError, setMetricsError] = useState("");
 
   useEffect(() => {
-    const sessionFromUrl = getSessionFromUrl();
-    const token = getStoredSessionValue(SESSION_KEYS.TOKEN);
-    if (!token || isTokenExpired(token)) {
-      clearStoredSession();
-      window.location.replace(LOGIN_APP_URL);
-      return;
+    if (typeof window === "undefined") {
+      return undefined;
     }
 
-    if (sessionFromUrl) {
-      setCurrentUser(sessionFromUrl);
-      setSessionReady(true);
-      return;
-    }
+    let active = true;
+    stripLegacySessionParams();
+    clearStoredSession();
 
-    const email = getStoredSessionValue(SESSION_KEYS.EMAIL);
-    const firstName = getStoredSessionValue(SESSION_KEYS.FIRST_NAME);
-    const lastName = getStoredSessionValue(SESSION_KEYS.LAST_NAME);
-    const storedName = getStoredSessionValue(SESSION_KEYS.NAME);
-    const name = storedName || formatUserName(firstName, lastName, email);
-    setCurrentUser({ email, firstName, lastName, name });
-    setSessionReady(true);
+    const bootstrapSession = async () => {
+      try {
+        const payload = await requestPortalApi("/session/me");
+        const sessionUser = normalizeSessionUser(payload);
+        if (!active || !sessionUser) {
+          return;
+        }
+
+        setCurrentUser(sessionUser);
+        setSessionReady(true);
+      } catch {
+        clearStoredSession();
+        if (active) {
+          window.location.replace(LOGIN_APP_URL);
+        }
+      }
+    };
+
+    bootstrapSession();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -1469,10 +1425,6 @@ const App = () => {
   }, []);
 
   const loadMetrics = useCallback(async () => {
-    if (!getSessionToken() || isTokenExpired(getSessionToken())) {
-      return;
-    }
-
     const fetchPeriodMetrics = async (period) => {
       const payload = await requestPortalApi("/metrics", {
         method: "GET",
@@ -1548,7 +1500,13 @@ const App = () => {
     }, 650);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await requestPortalApi("/session/logout", { method: "POST" });
+    } catch {
+      // If the backend session is already invalid, we still clear local remnants and redirect.
+    }
+
     clearStoredSession();
     window.location.replace(LOGIN_APP_URL);
   };
