@@ -40,6 +40,8 @@ jobs:
           inlineScript: |
             echo VITE_LOGIN_APP_URL=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-LOGIN-APP-URL --query value -o tsv) >> $GITHUB_ENV
             echo VITE_API_URL=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-API-URL --query value -o tsv) >> $GITHUB_ENV
+            echo VITE_RUNTIME_CONFIG_URL=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-RUNTIME-CONFIG-URL --query value -o tsv) >> $GITHUB_ENV
+            echo VITE_APP_TENANT_ID=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-APP-TENANT-ID --query value -o tsv) >> $GITHUB_ENV
 
       - name: Build And Deploy
         id: builddeploy
@@ -53,3 +55,5 @@ jobs:
         env:
           VITE_LOGIN_APP_URL: ${{ env.VITE_LOGIN_APP_URL }}
           VITE_API_URL: ${{ env.VITE_API_URL }}
+          VITE_RUNTIME_CONFIG_URL: ${{ env.VITE_RUNTIME_CONFIG_URL }}
+          VITE_APP_TENANT_ID: ${{ env.VITE_APP_TENANT_ID }}

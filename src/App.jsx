@@ -7,6 +7,11 @@ import { getRuntimeEnv } from "./runtimeConfig";
 const LOGIN_APP_URL = getRuntimeEnv("VITE_LOGIN_APP_URL", "/login");
 const API_URL = getRuntimeEnv("VITE_API_URL", "/api").replace(/\/+$/, "");
 const LEGACY_SESSION_KEYS = ["token", "user_email", "user_first_name", "user_last_name", "user_name"];
+let portalCsrfToken = "";
+
+const setPortalCsrfToken = (value) => {
+  portalCsrfToken = typeof value === "string" ? value.trim() : "";
+};
 
 const VIEWS = {
   HOME: "home",
@@ -133,13 +138,18 @@ const requestPortalApi = async (path, { method = "GET", query = {}, body } = {})
   });
 
   const headers = {};
+  const normalizedMethod = method.toUpperCase();
 
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
 
+  if (!["GET", "HEAD", "OPTIONS"].includes(normalizedMethod) && portalCsrfToken) {
+    headers["X-CSRF-Token"] = portalCsrfToken;
+  }
+
   const response = await fetch(url.toString(), {
-    method,
+    method: normalizedMethod,
     headers,
     credentials: "include",
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -309,6 +319,7 @@ const getInitial = (name, fallback) => {
 };
 
 const clearStoredSession = () => {
+  setPortalCsrfToken("");
   if (typeof window === "undefined") {
     return;
   }
@@ -1378,9 +1389,15 @@ const App = () => {
       try {
         const payload = await requestPortalApi("/session/me");
         const sessionUser = normalizeSessionUser(payload);
-        if (!active || !sessionUser) {
+        if (!sessionUser) {
+          throw new Error("La sesión del tenant devolvió un formato inválido.");
+        }
+
+        if (!active) {
           return;
         }
+
+        setPortalCsrfToken(typeof payload?.csrfToken === "string" ? payload.csrfToken : "");
 
         setCurrentUser(sessionUser);
         setSessionReady(true);
