@@ -17,11 +17,15 @@
       (function () {
         var runtimeConfigUrl = "%VITE_RUNTIME_CONFIG_URL%";
         var apiBaseUrl = "%VITE_API_URL%";
-        if (!runtimeConfigUrl || runtimeConfigUrl === "%VITE_RUNTIME_CONFIG_URL%") {
-          if (apiBaseUrl && apiBaseUrl !== "%VITE_API_URL%") {
+        var hasExplicitRuntimeConfigUrl =
+          runtimeConfigUrl && runtimeConfigUrl !== "%VITE_RUNTIME_CONFIG_URL%";
+        var hasExplicitApiBaseUrl = apiBaseUrl && apiBaseUrl !== "%VITE_API_URL%";
+
+        if (!hasExplicitRuntimeConfigUrl) {
+          if (hasExplicitApiBaseUrl) {
             runtimeConfigUrl = apiBaseUrl.replace(/\/+$/, "") + "/runtime-config.js";
           } else {
-            runtimeConfigUrl = "/api/runtime-config.js";
+            return;
           }
         }
         var script = document.createElement("script");
