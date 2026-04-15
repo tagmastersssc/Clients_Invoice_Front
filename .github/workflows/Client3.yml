@@ -7,7 +7,7 @@ on:
 
 env:
   APP_LOCATION: "/"
-  APP_ARTIFACT_LOCATION: "dist" # location of client code build output
+  APP_ARTIFACT_LOCATION: "dist"
 
 permissions:
   contents: read
