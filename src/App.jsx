@@ -6,6 +6,7 @@ import { getRuntimeEnv } from "./runtimeConfig";
 
 const LOGIN_APP_URL = getRuntimeEnv("VITE_LOGIN_APP_URL", "/login");
 const API_URL = getRuntimeEnv("VITE_API_URL", "/api").replace(/\/+$/, "");
+const PORTAL_SESSION_TOKEN_KEY = "bilai_client_token";
 const LEGACY_SESSION_KEYS = ["token", "user_email", "user_first_name", "user_last_name", "user_name"];
 let portalCsrfToken = "";
 
@@ -139,6 +140,12 @@ const requestPortalApi = async (path, { method = "GET", query = {}, body } = {})
 
   const headers = {};
   const normalizedMethod = method.toUpperCase();
+  const sessionToken =
+    typeof window !== "undefined" ? (window.sessionStorage.getItem(PORTAL_SESSION_TOKEN_KEY) || "").trim() : "";
+
+  if (sessionToken) {
+    headers.Authorization = `Bearer ${sessionToken}`;
+  }
 
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -324,10 +331,36 @@ const clearStoredSession = () => {
     return;
   }
 
+  window.sessionStorage.removeItem(PORTAL_SESSION_TOKEN_KEY);
+
   LEGACY_SESSION_KEYS.forEach((key) => {
     window.sessionStorage.removeItem(key);
     window.localStorage.removeItem(key);
   });
+};
+
+const consumeSessionTokenFromUrl = () => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+  if (!hash) {
+    return "";
+  }
+
+  const hashParams = new URLSearchParams(hash);
+  const token = (hashParams.get("token") || "").trim();
+  if (!token) {
+    return "";
+  }
+
+  hashParams.delete("token");
+  const cleanHash = hashParams.toString();
+  const cleanUrl = `${window.location.pathname}${window.location.search}${cleanHash ? `#${cleanHash}` : ""}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+  window.sessionStorage.setItem(PORTAL_SESSION_TOKEN_KEY, token);
+  return token;
 };
 
 const stripLegacySessionParams = () => {
@@ -1383,7 +1416,7 @@ const App = () => {
 
     let active = true;
     stripLegacySessionParams();
-    clearStoredSession();
+    consumeSessionTokenFromUrl();
 
     const bootstrapSession = async () => {
       try {
