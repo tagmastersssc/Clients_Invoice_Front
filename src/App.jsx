@@ -1476,7 +1476,7 @@ const App = () => {
 
   const loadMetrics = useCallback(async () => {
     const fetchPeriodMetrics = async (period) => {
-      const payload = await requestPortalApi("/metrics", {
+      const payload = await requestPortalApi("/portal/metrics", {
         method: "GET",
         query: {
           year: String(period.year),
