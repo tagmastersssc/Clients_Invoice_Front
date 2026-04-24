@@ -1,13 +1,14 @@
 
 name: Client3 - Deploy web app to Azure Static Web Apps
+#
 
 on:
   push:
     branches: [ "prod","uat" ]
 
 env:
-  APP_LOCATION: "/" # location of your client code
-  APP_ARTIFACT_LOCATION: "dist" # location of client code build output
+  APP_LOCATION: "/"
+  APP_ARTIFACT_LOCATION: "dist"
 
 permissions:
   contents: read
@@ -38,7 +39,10 @@ jobs:
         uses: azure/CLI@v1
         with:
           inlineScript: |
-            echo VITE_LOGIN_APP_URL=$(az keyvault secret show --vault-name kClient3-${{github.ref_name}}-eastus --name VITE-LOGIN-APP-URL --query value) >> $GITHUB_ENV
+            echo VITE_LOGIN_APP_URL=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-LOGIN-APP-URL --query value -o tsv) >> $GITHUB_ENV
+            echo VITE_API_URL=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-API-URL --query value -o tsv) >> $GITHUB_ENV
+            echo VITE_RUNTIME_CONFIG_URL=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-RUNTIME-CONFIG-URL --query value -o tsv) >> $GITHUB_ENV
+            echo VITE_APP_TENANT_ID=$(az keyvault secret show --vault-name Client3${{github.ref_name}}-centralus --name VITE-APP-TENANT-ID --query value -o tsv) >> $GITHUB_ENV
 
       - name: Build And Deploy
         id: builddeploy
@@ -51,3 +55,6 @@ jobs:
           app_artifact_location: ${{ env.APP_ARTIFACT_LOCATION }}
         env:
           VITE_LOGIN_APP_URL: ${{ env.VITE_LOGIN_APP_URL }}
+          VITE_API_URL: ${{ env.VITE_API_URL }}
+          VITE_RUNTIME_CONFIG_URL: ${{ env.VITE_RUNTIME_CONFIG_URL }}
+          VITE_APP_TENANT_ID: ${{ env.VITE_APP_TENANT_ID }}

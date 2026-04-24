@@ -15,8 +15,21 @@
     <script>
       window.__BILAI_RUNTIME_CONFIG__ = window.__BILAI_RUNTIME_CONFIG__ || {};
       (function () {
+        var runtimeConfigUrl = "%VITE_RUNTIME_CONFIG_URL%";
+        var apiBaseUrl = "%VITE_API_URL%";
+        var hasExplicitRuntimeConfigUrl =
+          runtimeConfigUrl && runtimeConfigUrl !== "%VITE_RUNTIME_CONFIG_URL%";
+        var hasExplicitApiBaseUrl = apiBaseUrl && apiBaseUrl !== "%VITE_API_URL%";
+
+        if (!hasExplicitRuntimeConfigUrl) {
+          if (hasExplicitApiBaseUrl) {
+            runtimeConfigUrl = apiBaseUrl.replace(/\/+$/, "") + "/runtime-config.js";
+          } else {
+            return;
+          }
+        }
         var script = document.createElement("script");
-        script.src = "/api/runtime-config.js";
+        script.src = runtimeConfigUrl;
         script.async = false;
         document.head.appendChild(script);
       })();
